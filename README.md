@@ -18,13 +18,44 @@ graph LR
   B --> C[TAR File<br/>'foobar.tar']
 ```
 
+## Packing minimum example
+
+tar-vern supplies file and directory information to pack through "TypeScript async generator."
+This allows you to specify pack data with very concise code.
+
+```typescript
+import {
+  createTarPacker, storeReaderToFile,
+  createFileItem, createDirectoryItem } from 'tar-vern';
+
+// Create an async generator for tar entries
+const itemGenerator = async function*() {
+  // Add a simple text file
+  yield await createFileItem(
+    'hello.txt',      // file name
+    'Hello, world!'   // text contents
+  );
+  
+  // Add a directory
+  yield await createDirectoryItem('mydir');
+
+  // (Make your own entries with yield expression...)
+};
+
+// Create tar stream and write to file
+const packer = createTarPacker(itemGenerator());
+await storeReaderToFile(packer, 'archive.tar.gz');   // Use helper to awaitable
+```
+
 ## Features
 
 - Streaming API: Memory-efficient processing of large files
 - Multiple content sources: String, Buffer, ReadableStream, file paths and async generators
 - Metadata preservation: File permissions, ownership, timestamps
 - Built-in compression: GZip compression support (`tar.gz` format)
-- No any other dependencies.
+- No external dependencies.
+
+----
 
 ## Installation
 
@@ -32,18 +63,19 @@ graph LR
 npm install tar-vern
 ```
 
-----
-
 ## Usage for tar packing
 
-### Basic example
+### EntryItem basis
+
+The async generator needs to produce `EntryItem` objects.
+These objects hold information about files and directories to be stored in the tar archive, and for files, they also contain content data information.
+
+There are no special requirements for this information, so you can construct everything manually:
 
 ```typescript
-import { createTarPacker, storeReaderToFile } from 'tar-vern';
-
 // Create an async generator for tar entries
-const generator = async function*() {
-  // Add a simple text file
+const itemGenerator = async function*() {
+  // Construct a simple text file item
   yield {
     kind: 'file',
     path: 'hello.txt',
@@ -54,9 +86,9 @@ const generator = async function*() {
     gid: 1000,
     date: new Date(),
     content: 'Hello, world!'   // text contents
-  };
+  } as EntryItem;
   
-  // Add a directory
+  // Construct a directory item
   yield {
     kind: 'directory',
     path: 'mydir',
@@ -66,12 +98,81 @@ const generator = async function*() {
     uid: 1000,
     gid: 1000,
     date: new Date()
-  };
+  } as EntryItem;
+};
+```
+
+However, constructing all `EntryItem` objects manually can be tedious. Therefore, helper functions are provided as follows.
+
+### Helper functions
+
+Helper functions are provided to simplify the construction of `EntryItem` objects. The following types are available:
+
+|Function|Details|
+|:----|:----|
+|`createDirectoryItem()`|Construct directory item|
+|`createFileItem()`|Construct basic file item from string or `Buffer`|
+|`createReadableFileItem()`|Construct file item from readable stream (`stream.Readable`)|
+|`createGeneratorFileItem()`|Construct file item from async generator|
+|`createReadFileItem()`|Construct file item from a file on real filesystem|
+
+For example:
+
+```typescript
+import { createReadStream } from 'fs';
+import { 
+  createReadFileItem, createDirectoryItem,
+  createReadableFileItem, storeReaderToFile } from 'tar-vern';
+
+// Configuration easier with item creation functions
+const itemGenerator = async function*() {
+  // Add file from filesystem (auto-detects metadata)
+  yield await createReadFileItem('archived-name.txt', '/path/to/real/source.txt');
+
+  // Add directory from filesystem
+  yield await createDirectoryItem('dir/sub/name', 'exceptName', { 
+    directoryPath: '/path/to/real/dir' 
+  });
+
+  // Add from readable stream
+  const stream = createReadStream('/path/to/real/large-file.bin');
+  yield await createReadableFileItem('large-file.bin', stream);
 };
 
-// Create tar stream and write to file
-const packer = createTarPacker(generator());
-await storeReaderToFile(packer, 'archive.tar');   // Use helper to awaitable
+// The `packer` generally `stream.Readable`
+const packer = createTarPacker(itemGenerator());
+
+// Safer awaitable store file from `stream.Readable`
+await storeReaderToFile(packer, 'output.tar');
+```
+
+NOTE: The tar format requires file sizes to be stored in the header. This means when using `stream.Readable` or async generators for streaming data, the file size must be known in advance. You can provide this via the `length` option in `createReadableFileItem()` and `createGeneratorFileItem()`. However, if `length` is omitted, all data will be buffered in memory before being written to the tar archive, which could cause performance issues with very large files.
+
+### Stat reflection options
+
+When `createReadFileItem()` or `createDirectoryItem()` can access real files or directories, their "stats" metadata can be reflected in the tar archive:
+
+```typescript
+import { createReadFileItem, ReflectStats } from 'tar-vern';
+
+// Don't reflect any file stats (use provided `options` parameter)
+yield await createReadFileItem('file.txt', '/source.txt',
+  'none',   // Don't reflect
+  {
+    mode: 0o644,   // Mode flags
+    uid: 1000,     // user id
+    gid: 1000,     // group id
+    uname: "foo",  // user name
+    gname: "bar"   // group name
+  });
+
+// Reflect all stats except user/group name
+yield await createReadFileItem('file.txt', '/source.txt',
+  'exceptName');   // reflect except names
+
+// Reflect all stats including numeric uid/gid as names
+yield await createReadFileItem('file.txt', '/source.txt',
+  'all');   // reflect all stats
 ```
 
 ### With GZip compression
@@ -84,126 +185,18 @@ Supported `CompressionTypes`:
 |`gzip`|Combined GZip compression stream|
 
 ```typescript
-import { createTarPacker, storeReaderToFile, CompressionTypes } from 'tar-vern';
+import { createTarPacker, storeReaderToFile } from 'tar-vern';
 
-const generator = async function*() {
-  yield {
-    kind: 'file',
-    path: 'data.txt',
-    mode: 0o644,
-    uname: 'user',
-    gname: 'group',
-    uid: 1000,
-    gid: 1000,
-    date: new Date(),
-    content: 'Large amount of data...'
-  };
+const itemGenerator = async function*() {
+  yield await createFileItem(
+    'data.txt',
+    'Large amount of data...'
+  );
 };
 
-// Create compressed tar stream
-const packer = createTarPacker(generator(), 'gzip');
-await storeReaderToFile(packer, 'archive.tar.gz');
-```
-
-### Helper functions
-
-```typescript
-import { 
-  createReadFileItem, 
-  createDirectoryItem,
-  createReadableItem,
-  storeReaderToFile
-} from 'tar-vern';
-import { createReadStream } from 'fs';
-
-// Configuration easier with item creation functions
-const generator = async function*() {
-  // Add file from filesystem (auto-detects metadata)
-  yield await createReadFileItem('archived-name.txt', '/path/to/real/source.txt');
-
-  // Add directory from filesystem
-  yield await createDirectoryItem('dir/sub/name', 'exceptName', { 
-    directoryPath: '/path/to/real/dir' 
-  });
-
-  // Add from readable stream
-  const stream = createReadStream('/path/to/large-file.bin');
-  yield await createReadableItem('large-file.bin', stream);
-};
-
-// The `packer` generally `stream.Readable`
-const packer = createTarPacker(generator());
-
-// Safer awaitable store file from `stream.Readable`
-await storeReaderToFile(packer, 'output.tar');
-```
-
-### Content types
-
-```typescript
-const generator = async function*() {
-  // String content
-  yield {
-    kind: 'file',
-    path: 'text.txt',
-    content: 'Text content'    // Store with utf8 encoding
-    // ... other properties
-  };
-
-  // Buffer content
-  yield {
-    kind: 'file',
-    path: 'binary.bin',
-    content: Buffer.from([0x48, 0x65, 0x6c, 0x6c, 0x6f])
-    // ... other properties
-  };
-
-  // Readable stream content
-  yield {
-    kind: 'file',
-    path: 'stream.dat',
-    content: {
-      kind: 'readable',
-      length: 1024,
-      readable: myReadableStream
-    }
-    // ... other properties
-  };
-
-  // Async generator content
-  yield {
-    kind: 'file',
-    path: 'generated.dat',
-    content: {
-      kind: 'generator',
-      length: 2048,
-      generator: myAsyncGenerator   // (each yielding `Buffer` instance)
-    }
-    // ... other properties
-  };
-};
-```
-
-### Stat reflection options
-
-```typescript
-import { createReadFileItem, ReflectStats } from 'tar-vern';
-
-// Don't reflect any file stats (use provided options only)
-yield await createReadFileItem('file.txt', '/source.txt',
-  'none', {    // Don't reflect
-    mode: 0o644,
-    uid: 1000,
-    gid: 1000
-  });
-
-// Reflect all stats except username/groupname
-yield await createReadFileItem('file.txt', '/source.txt',
-  'exceptName');   // except names
-
-// Reflect all stats including numeric uid/gid as names
-yield await createReadFileItem('file.txt', '/source.txt',
-  'all');   // reflect all stats
+// Create uncompressed tar stream
+const packer = createTarPacker(itemGenerator(), 'none');
+await storeReaderToFile(packer, 'archive.tar');
 ```
 
 ----
