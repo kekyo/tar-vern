@@ -7,7 +7,7 @@ import { spawn } from 'child_process';
 import { createGzip } from 'zlib';
 import { createTarPacker } from '../src/packer';
 import { CompressionTypes, EntryItem } from '../src/types';
-import { createReadableItem, createReadFileItem, createDirectoryItem, storeReaderToFile } from '../src/utils';
+import { createReadableFileItem, createReadFileItem, createDirectoryItem, storeReaderToFile } from '../src/utils';
 
 describe('Tar packer test', () => {
   const testBaseDir = mkdtempSync(join(tmpdir(), 'tar-vern-'));
@@ -443,7 +443,7 @@ describe('Tar packer test', () => {
     const stream = Readable.from([testContent]);
     
     const generator = async function*() {
-      const fileItem = await createReadableItem('helper-test.txt', stream, {
+      const fileItem = await createReadableFileItem('helper-test.txt', stream, {
         mode: 0o644,
         uname: 'helper',
         gname: 'helper',

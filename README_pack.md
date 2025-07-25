@@ -17,7 +17,7 @@ A modern TypeScript library for creating tape archives (tar/ustar format) using 
 - Multiple content sources: String, Buffer, ReadableStream, file paths and async generators
 - Metadata preservation: File permissions, ownership, timestamps
 - Built-in compression: GZip compression support (`tar.gz` format)
-- No any other dependencies.
+- No external dependencies.
 
 ## Installation
 
@@ -29,43 +29,31 @@ npm install tar-vern
 
 ## Usage for tar packing
 
-### Basic example
+### Minimum example
+
+tar-vern supplies file and directory information to pack through "TypeScript async generator."
+This allows you to specify pack data with very concise code.
 
 ```typescript
 import { createTarPacker, storeReaderToFile } from 'tar-vern';
-import { createWriteStream } from 'fs';
 
 // Create an async generator for tar entries
-const generator = async function*() {
+const itemGenerator = async function*() {
   // Add a simple text file
-  yield {
-    kind: 'file',
-    path: 'hello.txt',
-    mode: 0o644,
-    uname: 'user',
-    gname: 'group',
-    uid: 1000,
-    gid: 1000,
-    date: new Date(),
-    content: 'Hello, world!'   // text contents
-  };
+  yield await createFileItem(
+    'hello.txt',      // file name
+    'Hello, world!'   // text contents
+  );
   
   // Add a directory
-  yield {
-    kind: 'directory',
-    path: 'mydir',
-    mode: 0o755,
-    uname: 'user',
-    gname: 'group',
-    uid: 1000,
-    gid: 1000,
-    date: new Date()
-  };
+  yield await createDirectoryItem('mydir');
+
+  // (Make your own entries with yield expression...)
 };
 
-// Create tar stream and write to file
-const packer = createTarPacker(generator());
-await storeReaderToFile(packer, 'archive.tar');   // Use helper to awaitable
+// Create GZip compressed tar stream
+const packer = createTarPacker(itemGenerator(), 'gzip');
+await storeReaderToFile(packer, 'archive.tar.gz');   // Use helper to awaitable
 ```
 
 ----

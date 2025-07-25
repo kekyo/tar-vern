@@ -4,8 +4,9 @@
 // https://github.com/kekyo/tar-vern/
 
 import { Readable } from "stream";
-import { CompressionTypes, EntryItem } from "./types";
 import { createGzip } from "zlib";
+import { getBuffer } from "./utils";
+import { CompressionTypes, EntryItem } from "./types";
 
 /**
  * Get the byte length of a string in UTF-8
@@ -182,10 +183,10 @@ export const createTarPacker = (
         // Entry is a file
         case 'file': {
           const entryItemContent = entryItem.content;
-          // Content is a string
-          if (typeof entryItemContent === 'string') {
-            // Get content bytes from string
-            const contentBytes = Buffer.from(entryItemContent, "utf8");
+          // Content is a string or buffer
+          if (typeof entryItemContent === 'string' || Buffer.isBuffer(entryItemContent)) {
+            // Get content bytes from string or buffer
+            const contentBytes = getBuffer(entryItemContent);
 
             // Create and produce tar header bytes
             const tarHeaderBytes = createTarHeader(
@@ -201,28 +202,8 @@ export const createTarPacker = (
             yield tarHeaderBytes;
 
             // Content bytes to adjust padding space and produce
-            const paddedContentBytes = getPaddedBytes(contentBytes);
-            yield paddedContentBytes;
-
-          // Content is a buffer
-          } else if (Buffer.isBuffer(entryItemContent)) {
-            // Create and produce tar header bytes
-            const tarHeaderBytes = createTarHeader(
-              'file',
-              entryItem.path,
-              entryItemContent.length,
-              entryItem.mode,
-              entryItem.uname,
-              entryItem.gname,
-              entryItem.uid,
-              entryItem.gid,
-              entryItem.date);
-            yield tarHeaderBytes;
-
-            // Content bytes to adjust padding space and produce
-            const paddedContentBytes = getPaddedBytes(entryItemContent);
-            yield paddedContentBytes;
-
+            const totalPaddedContentBytes = getPaddedBytes(contentBytes);
+            yield totalPaddedContentBytes;
           } else {
             // Create and produce tar header bytes
             const tarHeaderBytes = createTarHeader(
@@ -237,45 +218,33 @@ export const createTarPacker = (
               entryItem.date);
             yield tarHeaderBytes;
 
+            let position = 0;
             switch (entryItemContent.kind) {
               // Content is a generator
               case 'generator': {
-                let position = 0;
-                for await (const contentFragmentBytes of entryItemContent.generator) {
+                for await (const contentBytes of entryItemContent.generator) {
                   signal?.throwIfAborted();
-                  yield contentFragmentBytes;
-                  position += contentFragmentBytes.length;
-                }
-
-                // Padding space
-                if (position % 512 !== 0) {
-                  signal?.throwIfAborted();
-                  yield Buffer.alloc(512 - (position % 512), 0);
+                  yield contentBytes;
+                  position += contentBytes.length;
                 }
                 break;
               }
               // Content is a readable stream
               case 'readable': {
-                let position = 0;
                 for await (const content of entryItemContent.readable) {
                   signal?.throwIfAborted();
-                  if (typeof content === 'string') {
-                    const stringBytes = Buffer.from(content, "utf8");
-                    yield stringBytes;
-                    position += stringBytes.length;
-                  } else if (Buffer.isBuffer(content)) {
-                    yield content;
-                    position += content.length;
-                  }
-                }
-
-                // Padding space
-                if (position % 512 !== 0) {
-                  signal?.throwIfAborted();
-                  yield Buffer.alloc(512 - (position % 512), 0);
+                  const contentBytes = getBuffer(content);
+                  yield contentBytes;
+                  position += contentBytes.length;
                 }
                 break;
               }
+            }
+
+            // Padding space
+            if (position % 512 !== 0) {
+              signal?.throwIfAborted();
+              yield Buffer.alloc(512 - (position % 512), 0);
             }
           }
           break;

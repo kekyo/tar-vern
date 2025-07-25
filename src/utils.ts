@@ -6,7 +6,7 @@
 import { createReadStream, createWriteStream } from "fs";
 import { stat } from "fs/promises";
 import { Readable } from "stream";
-import { CreateItemOptions, CreateReadableItemOptions, FileItem, DirectoryItem, ReflectStats, CreateDirectoryItemOptions } from "./types";
+import { CreateItemOptions, CreateReadableFileItemOptions, FileItem, DirectoryItem, ReflectStats, CreateDirectoryItemOptions } from "./types";
 
 /**
  * Get the user/group name from the candidate name or ID
@@ -17,6 +17,15 @@ import { CreateItemOptions, CreateReadableItemOptions, FileItem, DirectoryItem, 
  */
 const getUName = (candidateName: string | undefined, candidateId: number, reflectStat: ReflectStats | undefined) => {
   return candidateName ?? (reflectStat === 'all' ? candidateId.toString() : 'root');
+}
+
+/**
+ * Get a buffer from the string or Buffer
+ * @param data - The data to get a buffer from
+ * @returns A buffer
+ */
+export const getBuffer = (data: Buffer | string) => {
+  return Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8');
 }
 
 /**
@@ -61,37 +70,17 @@ export const createDirectoryItem = async (
 };
 
 /**
- * Create a FileItem from a Readable stream
+ * Create a FileItem from content data directly
  * @param path - The path to the file in the tar archive
- * @param reader - The readable stream
+ * @param content - Content data
  * @param options - Metadata for the file including path in tar archive
  * @returns A FileItem
  */
-export const createReadableItem = async (
+export const createFileItem = async (
   path: string,
-  reader: Readable,
-  options?: CreateReadableItemOptions
+  content: string | Buffer,
+  options?: CreateItemOptions
 ): Promise<FileItem> => {
-  let readable = reader;
-
-  // When length is not provided, calculate the total size by reading all chunks
-  let length = options?.length;
-  if (!length) {
-    // Calculate the total size by reading all chunks
-    const chunks: Buffer[] = [];
-    length = 0;
-
-    // Collect all chunks to calculate size
-    for await (const chunk of reader) {
-      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk, 'utf8');
-      chunks.push(buffer);
-      length += buffer.length;
-    }
-
-    // Create a new readable stream from the collected chunks
-    readable = Readable.from(chunks);
-  }
-
   const mode = options?.mode ?? 0o644;
   const uid = options?.uid ?? 0;
   const gid = options?.gid ?? 0;
@@ -104,12 +93,124 @@ export const createReadableItem = async (
   return {
     kind: 'file',
     path, mode, uname, gname, uid, gid, date,
-    content: {
-      kind: 'readable',
-      length: length,
-      readable: readable
-    }
+    content
   };
+};
+
+/**
+ * Create a FileItem from a Readable stream
+ * @param path - The path to the file in the tar archive
+ * @param readable - The readable stream
+ * @param options - Metadata for the file including path in tar archive
+ * @returns A FileItem
+ */
+export const createReadableFileItem = async (
+  path: string,
+  readable: Readable,
+  options?: CreateReadableFileItemOptions
+): Promise<FileItem> => {
+  const mode = options?.mode ?? 0o644;
+  const uid = options?.uid ?? 0;
+  const gid = options?.gid ?? 0;
+  const date = options?.date ?? new Date();
+
+  const uname = options?.uname ?? 'root';
+  const gname = options?.gname ?? 'root';
+
+  // When length is not provided, calculate the total size by reading all chunks
+  let length = options?.length;
+  if (!length) {
+    // Calculate the total size by reading all chunks
+    const chunks: Buffer[] = [];
+    length = 0;
+
+    // Collect all chunks to calculate size
+    for await (const chunk of readable) {
+      const buffer = getBuffer(chunk);
+      chunks.push(buffer);
+      length += buffer.length;
+    }
+
+    // Create a FileItem
+    return {
+      kind: 'file',
+      path, mode, uname, gname, uid, gid, date,
+      content: {
+        kind: 'readable',
+        length,
+        readable: Readable.from(chunks)
+      }
+    };
+  } else {
+    // Create a FileItem
+    return {
+      kind: 'file',
+      path, mode, uname, gname, uid, gid, date,
+      content: {
+        kind: 'readable',
+        length,
+        readable
+      }
+    };
+  }
+};
+
+/**
+ * Create a FileItem from a generator
+ * @param path - The path to the file in the tar archive
+ * @param generator - The generator to read the file from
+ * @param options - Metadata for the file including path in tar archive
+ * @returns A FileItem
+ */
+export const createGeneratorFileItem = async (
+  path: string,
+  generator: AsyncGenerator<Buffer, void, unknown>,
+  options?: CreateReadableFileItemOptions
+): Promise<FileItem> => {
+  const mode = options?.mode ?? 0o644;
+  const uid = options?.uid ?? 0;
+  const gid = options?.gid ?? 0;
+  const date = options?.date ?? new Date();
+
+  const uname = options?.uname ?? 'root';
+  const gname = options?.gname ?? 'root';
+
+  // When length is not provided, calculate the total size by reading all chunks
+  let length = options?.length;
+  if (!length) {
+    // Calculate the total size by reading all chunks
+    const chunks: Buffer[] = [];
+    length = 0;
+
+    // Collect all chunks to calculate size
+    for await (const chunk of generator) {
+      const buffer = getBuffer(chunk);
+      chunks.push(buffer);
+      length += buffer.length;
+    }
+
+    // Create a FileItem
+    return {
+      kind: 'file',
+      path, mode, uname, gname, uid, gid, date,
+      content: {
+        kind: 'readable',
+        length,
+        readable: Readable.from(chunks)
+      }
+    };
+  } else {
+    // Create a FileItem
+    return {
+      kind: 'file',
+      path, mode, uname, gname, uid, gid, date,
+      content: {
+        kind: 'generator',
+        length,
+        generator
+      }
+    };
+  }
 };
 
 /**
@@ -142,7 +243,7 @@ export const createReadFileItem = async (
   const gname = getUName(options?.gname, stats.gid, rs);
 
   // Create a FileItem
-  return await createReadableItem(path, reader, {
+  return await createReadableFileItem(path, reader, {
     length: stats.size, mode, uname, gname, uid, gid, date,
   });
 };

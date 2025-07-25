@@ -1,6 +1,6 @@
 {
   "name": "tar-vern",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tape archiver library for Typescript",
   "keywords": [
     "typescript",
@@ -15,7 +15,6 @@
     "url": "https://github.com/kekyo/tar-vern.git"
   },
   "homepage": "https://github.com/kekyo/tar-vern#readme",
-  "readme": "README_pack.md",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

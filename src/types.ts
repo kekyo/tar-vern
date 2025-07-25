@@ -122,6 +122,7 @@ export type CompressionTypes = 'none' | 'gzip';
 
 /**
  * Options for creating an item
+ * @remarks If these option values are provided, will set values to the item exactly
  */
 export interface CreateItemOptions {
   /**
@@ -156,16 +157,18 @@ export interface CreateItemOptions {
 export interface CreateDirectoryItemOptions extends CreateItemOptions {
   /**
    * The real directory path
+   * @remarks If provided, will get the stats from the directory path
    */
   readonly directoryPath?: string;
 }
 
 /**
- * Options for creating a readable item
+ * Options for creating a readable/generator item
  */
-export interface CreateReadableItemOptions extends CreateItemOptions {
+export interface CreateReadableFileItemOptions extends CreateItemOptions {
   /**
    * The length of the item
+   * @remarks If not provided, the length will be calculated by reading all chunks
    */
   readonly length?: number;
 }
