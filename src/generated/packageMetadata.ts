@@ -2,7 +2,7 @@
 // Do not edit manually
 
 export const name = "tar-vern";
-export const version = "0.2.0";
+export const version = "0.3.0";
 export const description = "Tape archiver library for Typescript";
 export const author = "Kouji Matsui (@kekyo@mi.kekyo.net)";
 export const license = "MIT";
