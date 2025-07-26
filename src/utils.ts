@@ -260,5 +260,6 @@ export const storeReaderToFile = (reader: Readable, path: string) => {
   return new Promise<void>((res, rej) => {
     writer.on('finish', res);
     writer.on('error', rej);
+    reader.on('error', rej);
   });
 };

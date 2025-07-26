@@ -788,4 +788,142 @@ describe('Tar packer test', () => {
     expect(extracted1.equals(randomData1)).toBe(true);
     expect(extracted2.equals(randomData2)).toBe(true);
   });
+
+  describe('Exception handling in generators', () => {
+    it('should handle exception in entry item generator', async () => {
+      const generator = async function*() {
+        // First item should work
+        yield {
+          kind: 'file' as const,
+          path: 'first.txt',
+          mode: 0o644,
+          uname: 'test',
+          gname: 'test',
+          uid: 0,
+          gid: 0,
+          date: new Date(),
+          content: 'First file content',
+        };
+
+        // Second item should throw an error
+        throw new Error('Generator exception test');
+      };
+
+      const packer = createTarPacker(generator());
+      const tarPath = join(testDir, 'exception-test.tar');
+
+      // Should reject when trying to store the packer stream
+      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow('Generator exception test');
+    });
+
+    it('should handle exception in content generator', async () => {
+      const generator = async function*() {
+        yield {
+          kind: 'file' as const,
+          path: 'generator-exception.txt',
+          mode: 0o644,
+          uname: 'test',
+          gname: 'test',
+          uid: 0,
+          gid: 0,
+          date: new Date(),
+          content: {
+            kind: 'generator' as const,
+            length: 100, // Doesn't matter for this test
+            generator: (async function*() {
+              yield Buffer.from('Some content', 'utf8');
+              throw new Error('Content generator exception');
+            })()
+          },
+        };
+      };
+
+      const packer = createTarPacker(generator());
+      const tarPath = join(testDir, 'content-exception-test.tar');
+
+      // Should reject when content generator throws
+      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow('Content generator exception');
+    });
+
+    it('should handle exception in readable stream', async () => {
+      const generator = async function*() {
+        // Create a readable stream that will error immediately
+        const errorStream = new Readable({
+          read() {
+            // Emit error immediately instead of using nextTick
+            this.emit('error', new Error('Readable stream exception'));
+          }
+        });
+
+        yield {
+          kind: 'file' as const,
+          path: 'stream-exception.txt',
+          mode: 0o644,
+          uname: 'test',
+          gname: 'test',
+          uid: 0,
+          gid: 0,
+          date: new Date(),
+          content: {
+            kind: 'readable' as const,
+            length: 100,
+            readable: errorStream
+          },
+        };
+      };
+
+      const packer = createTarPacker(generator());
+      const tarPath = join(testDir, 'stream-exception-test.tar');
+
+      // Should reject when readable stream emits error
+      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow('Readable stream exception');
+    });
+
+    it('should handle partial success before exception', async () => {
+      const generator = async function*() {
+        // First file should be successfully written
+        yield {
+          kind: 'file' as const,
+          path: 'success.txt',
+          mode: 0o644,
+          uname: 'test',
+          gname: 'test',
+          uid: 0,
+          gid: 0,
+          date: new Date(),
+          content: 'This should be written successfully',
+        };
+
+        // Second file causes exception
+        yield {
+          kind: 'file' as const,
+          path: 'will-fail.txt',
+          mode: 0o644,
+          uname: 'test',
+          gname: 'test',
+          uid: 0,
+          gid: 0,
+          date: new Date(),
+          content: {
+            kind: 'generator' as const,
+            length: 50,
+            generator: (async function*() {
+              yield Buffer.from('Partial content', 'utf8');
+              throw new Error('Partial exception');
+            })()
+          },
+        };
+      };
+
+      const packer = createTarPacker(generator());
+      const tarPath = join(testDir, 'partial-exception-test.tar');
+
+      // Should reject, but may have written partial content
+      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow('Partial exception');
+
+      // The tar file may exist but be incomplete/corrupted
+      // This is expected behavior - when an exception occurs during streaming,
+      // the file is left in an inconsistent state
+    });
+  });
 });
