@@ -108,9 +108,10 @@ export type EntryItem = FileItem | DirectoryItem;
 ///////////////////////////////////////////////////////////////////////////////////
 
 /**
- * Interface for file item reader that allows choosing how to retrieve data
+ * Interface for extracted all file entry items
  */
-export interface FileItemReader {
+export interface ExtractedFileItem extends EntryItemBase {
+  readonly kind: 'file';
   /**
    * Get the file content as string or buffer
    * @param type - The type of data to retrieve ('string' or 'buffer')
@@ -119,17 +120,6 @@ export interface FileItemReader {
   getContent(type: 'string'): Promise<string>;
   getContent(type: 'buffer'): Promise<Buffer>;
   getContent(type: 'string' | 'buffer'): Promise<string | Buffer>;
-}
-
-/**
- * Interface for extracted all file entry items
- */
-export interface ExtractedFileItem extends EntryItemBase {
-  readonly kind: 'file';
-  /**
-   * The content of the item
-   */
-  readonly contentReader: FileItemReader;
 }
 
 /**

@@ -5,7 +5,7 @@
 
 import { Readable } from "stream";
 import { createGunzip } from "zlib";
-import { CompressionTypes, ExtractedDirectoryItem, ExtractedEntryItem, ExtractedFileItem, FileItemReader } from "./types";
+import { CompressionTypes, ExtractedDirectoryItem, ExtractedEntryItem, ExtractedFileItem } from "./types";
 import { getBuffer } from "./utils";
 
 /**
@@ -151,25 +151,6 @@ const parseTarHeader = (buffer: Buffer): {
 };
 
 /**
- * Create a file item reader
- * @param dataBuffer - The buffer containing file data
- * @returns The file item reader
- */
-const createFileItemReader = (dataBuffer: Buffer): FileItemReader => {
-  const reader: FileItemReader = {
-    async getContent(type: any) {
-      if (type === 'string') {
-        return dataBuffer.toString('utf8');
-      } else {
-        return dataBuffer;
-      }
-    }
-  } as any;
-  
-  return reader;
-};
-
-/**
  * Create a buffered async iterator that allows returning data
  */
 class BufferedAsyncIterator implements AsyncIterator<any> {
@@ -289,7 +270,13 @@ export const createTarExtractor = async function* (
         uname: header.uname,
         gname: header.gname,
         date: header.mtime,
-        contentReader: createFileItemReader(dataBuffer)
+        getContent: async (type: any) => {
+          if (type === 'string') {
+            return dataBuffer.toString('utf8');
+          } else {
+            return dataBuffer;
+          }
+        }
       } as ExtractedFileItem;
     }
   }

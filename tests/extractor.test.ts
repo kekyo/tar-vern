@@ -4,7 +4,7 @@ import { join } from 'path';
 import { createReadStream, mkdirSync, mkdtempSync, readFileSync, writeFileSync, chmodSync } from 'fs';
 import { spawn } from 'child_process';
 import { createTarExtractor } from '../src/extractor';
-import { CompressionTypes, ExtractedEntryItem, FileItemReader } from '../src/types';
+import { CompressionTypes, ExtractedEntryItem, ExtractedFileItem } from '../src/types';
 
 describe('Tar extractor test', () => {
   const testBaseDir = mkdtempSync(join(tmpdir(), 'tar-vern-extractor-'));
@@ -71,15 +71,13 @@ describe('Tar extractor test', () => {
     expect(entries[0].kind).toBe('file');
     expect(entries[0].path).toBe('test.txt');
     
-    // Verify content using FileItemReader
-    const fileEntry = entries[0] as any;
-    expect(fileEntry.content).toBeDefined();
-    const reader = fileEntry.content as FileItemReader;
+    // Verify content
+    const fileItem = entries[0] as ExtractedFileItem;
     
-    const contentAsString = await reader.getContent('string');
+    const contentAsString = await fileItem.getContent('string');
     expect(contentAsString).toBe('Hello, world!');
     
-    const contentAsBuffer = await reader.getContent('buffer');
+    const contentAsBuffer = await fileItem.getContent('buffer');
     expect(contentAsBuffer.toString()).toBe('Hello, world!');
   });
 
@@ -127,12 +125,12 @@ describe('Tar extractor test', () => {
     
     expect(stringFile).toBeDefined();
     expect(stringFile!.kind).toBe('file');
-    const content1 = await (stringFile as any).content.getContent('string');
+    const content1 = await (stringFile as ExtractedFileItem).getContent('string');
     expect(content1).toBe('Test data for multiple files');
     
     expect(bufferFile).toBeDefined();
     expect(bufferFile!.kind).toBe('file');
-    const content2 = await (bufferFile as any).content.getContent('string');
+    const content2 = await (bufferFile as ExtractedFileItem).getContent('string');
     expect(content2).toBe('Buffer content here');
     
     expect(subdir).toBeDefined();
@@ -140,7 +138,7 @@ describe('Tar extractor test', () => {
     
     expect(nestedFile).toBeDefined();
     expect(nestedFile!.kind).toBe('file');
-    const content3 = await (nestedFile as any).content.getContent('string');
+    const content3 = await (nestedFile as ExtractedFileItem).getContent('string');
     expect(content3).toBe('Nested content');
   });
 
@@ -167,7 +165,7 @@ describe('Tar extractor test', () => {
     expect(entries[0].kind).toBe('file');
     expect(entries[0].path).toBe('large.bin');
     
-    const extractedData = await (entries[0] as any).content.getContent('buffer');
+    const extractedData = await (entries[0] as ExtractedFileItem).getContent('buffer');
     expect(extractedData.length).toBe(size1MB);
     expect(extractedData.equals(randomData)).toBe(true);
   });
@@ -212,7 +210,7 @@ describe('Tar extractor test', () => {
     expect(entries[0].kind).toBe('file');
     expect(entries[0].path).toBe('empty.txt');
     
-    const content = await (entries[0] as any).content.getContent('string');
+    const content = await (entries[0] as ExtractedFileItem).getContent('string');
     expect(content).toBe('');
   });
 
@@ -235,7 +233,7 @@ describe('Tar extractor test', () => {
     expect(fileEntry).toBeDefined();
     expect(fileEntry!.kind).toBe('file');
     
-    const content = await (fileEntry as any).content.getContent('string');
+    const content = await (fileEntry as ExtractedFileItem).getContent('string');
     expect(content).toBe('Long path content');
   });
 
@@ -257,7 +255,7 @@ describe('Tar extractor test', () => {
     expect(fileEntry).toBeDefined();
     expect(fileEntry!.kind).toBe('file');
     
-    const content = await (fileEntry as any).content.getContent('string');
+    const content = await (fileEntry as ExtractedFileItem).getContent('string');
     expect(content).toBe('日本語のコンテンツ');
   });
 
@@ -278,7 +276,7 @@ describe('Tar extractor test', () => {
     expect(entries[0].kind).toBe('file');
     expect(entries[0].path).toBe('compressed.txt');
     
-    const content = await (entries[0] as any).content.getContent('string');
+    const content = await (entries[0] as ExtractedFileItem).getContent('string');
     expect(content).toBe('This is compressed content');
   });
 
@@ -297,15 +295,15 @@ describe('Tar extractor test', () => {
     const entries = await collectEntries(tarPath);
     
     expect(entries).toHaveLength(1);
-    const reader = (entries[0] as any).content as FileItemReader;
+    const fileItem = entries[0] as ExtractedFileItem;
     
     // Test getContent('string')
-    const stringContent = await reader.getContent('string');
+    const stringContent = await fileItem.getContent('string');
     expect(typeof stringContent).toBe('string');
     expect(stringContent).toBe(testContent);
     
     // Test getContent('buffer')
-    const bufferContent = await reader.getContent('buffer');
+    const bufferContent = await fileItem.getContent('buffer');
     expect(Buffer.isBuffer(bufferContent)).toBe(true);
     expect(bufferContent.toString()).toBe(testContent);
     
@@ -334,11 +332,11 @@ describe('Tar extractor test', () => {
     const exactFile = entries.find(e => e.path === 'exact-size.txt');
     
     expect(oddFile).toBeDefined();
-    const content1 = await (oddFile as any).content.getContent('string');
+    const content1 = await (oddFile as ExtractedFileItem).getContent('string');
     expect(content1).toBe('x'.repeat(513));
     
     expect(exactFile).toBeDefined();
-    const content2 = await (exactFile as any).content.getContent('string');
+    const content2 = await (exactFile as ExtractedFileItem).getContent('string');
     expect(content2).toBe('y'.repeat(512));
   });
 
@@ -383,13 +381,13 @@ describe('Tar extractor test', () => {
     expect(file3!.kind).toBe('file');
     
     // Verify content
-    const content1 = await (file1 as any).content.getContent('string');
+    const content1 = await (file1 as ExtractedFileItem).getContent('string');
     expect(content1).toBe('File 1');
     
-    const content2 = await (file2 as any).content.getContent('string');
+    const content2 = await (file2 as ExtractedFileItem).getContent('string');
     expect(content2).toBe('File 2');
     
-    const content3 = await (file3 as any).content.getContent('string');
+    const content3 = await (file3 as ExtractedFileItem).getContent('string');
     expect(content3).toBe('File 3');
   });
 
@@ -415,7 +413,7 @@ describe('Tar extractor test', () => {
     expect(entries[0].kind).toBe('file');
     expect(entries[0].path).toBe('binary.dat');
     
-    const extractedData = await (entries[0] as any).content.getContent('buffer');
+    const extractedData = await (entries[0] as ExtractedFileItem).getContent('buffer');
     expect(extractedData.length).toBe(256);
     expect(extractedData.equals(binaryData)).toBe(true);
   });
