@@ -9,9 +9,7 @@ export default defineConfig({
     dts({
       insertTypesEntry: true
     }),
-    screwUp({
-      outputMetadataFile: true
-    })
+    screwUp()
   ],
   build: {
     lib: {
