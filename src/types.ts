@@ -43,6 +43,20 @@ export interface EntryItemReadableContent extends EntryItemContentBase {
  */
 export type EntryItemContent = EntryItemGeneratorContent | EntryItemReadableContent;
 
+/**
+ * Interface for file item reader that allows choosing how to retrieve data
+ */
+export interface FileItemReader {
+  /**
+   * Get the file content as string or buffer
+   * @param type - The type of data to retrieve ('string' or 'buffer')
+   * @returns The file content as string or buffer
+   */
+  getContent(type: 'string'): Promise<string>;
+  getContent(type: 'buffer'): Promise<Buffer>;
+  getContent(type: 'string' | 'buffer'): Promise<string | Buffer>;
+}
+
 ///////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -88,7 +102,7 @@ export interface FileItem extends EntryItemBase {
   /**
    * The content of the item
    */
-  readonly content: string | Buffer | EntryItemContent;
+  readonly content: string | Buffer | EntryItemContent | FileItemReader;
 }
 
 /**

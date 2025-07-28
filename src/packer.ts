@@ -6,7 +6,7 @@
 import { Readable } from "stream";
 import { createGzip } from "zlib";
 import { getBuffer, MAX_NAME, MAX_PREFIX } from "./utils";
-import { CompressionTypes, EntryItem } from "./types";
+import { CompressionTypes, EntryItem, EntryItemContent } from "./types";
 
 /**
  * Get the byte length of a string in UTF-8
@@ -201,11 +201,14 @@ export const createTarPacker = (
             const totalPaddedContentBytes = getPaddedBytes(contentBytes);
             yield totalPaddedContentBytes;
           } else {
+            // Assert that this is EntryItemContent, not FileItemReader (packer doesn't handle FileItemReader)
+            const content = entryItemContent as EntryItemContent;
+            
             // Create and produce tar header bytes
             const tarHeaderBytes = createTarHeader(
               'file',
               entryItem.path,
-              entryItemContent.length,
+              content.length,
               entryItem.mode,
               entryItem.uname,
               entryItem.gname,
@@ -215,10 +218,10 @@ export const createTarPacker = (
             yield tarHeaderBytes;
 
             let position = 0;
-            switch (entryItemContent.kind) {
+            switch (content.kind) {
               // Content is a generator
               case 'generator': {
-                for await (const contentBytes of entryItemContent.generator) {
+                for await (const contentBytes of content.generator) {
                   signal?.throwIfAborted();
                   yield contentBytes;
                   position += contentBytes.length;
@@ -227,9 +230,9 @@ export const createTarPacker = (
               }
               // Content is a readable stream
               case 'readable': {
-                for await (const content of entryItemContent.readable) {
+                for await (const chunk of content.readable) {
                   signal?.throwIfAborted();
-                  const contentBytes = getBuffer(content);
+                  const contentBytes = getBuffer(chunk);
                   yield contentBytes;
                   position += contentBytes.length;
                 }
