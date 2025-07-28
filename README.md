@@ -10,18 +10,29 @@ Streaming tape archiver (tar) library for TypeScript/JavaScript.
 
 ## What is this?
 
-A modern TypeScript library for creating tape archives (tar/ustar format) using streaming API. Supports both files and directories with metadata preservation, GZip compression, readable streaming, and flexible content sources.
-
-```mermaid
-graph LR
-  A[Content Items<br/>* Files<br/>* Directories<br/>* String content<br/>* Buffer content<br/>* Async generators] -->|Stream pipe| B[Writer Stream<br/>'createWriteStream']
-  B --> C[TAR File<br/>'foobar.tar']
-```
+A modern TypeScript library for creating and extracting tape archives (tar/ustar format) using streaming API. Supports both files and directories with metadata preservation, GZip compression, readable streaming, and flexible content sources.
 
 ## Packing minimum example
 
 tar-vern supplies file and directory information to pack through "TypeScript async generator."
 This allows you to specify pack data with very concise code.
+
+```mermaid
+graph LR
+  subgraph A["Async generator"]
+    A2[Directory item]
+    A3[String content]
+    A4[Buffer content]
+    A5[Async generators]
+  end
+  
+  A2 --> B[TarPacker]
+  A3 --> B
+  A4 --> B
+  A5 --> B
+  
+  B --> C[TAR File<br/>'foobar.tar']
+```
 
 ```typescript
 import {
@@ -42,18 +53,63 @@ const itemGenerator = async function*() {
   // (Make your own entries with yield expression...)
 };
 
-// Create tar stream and write to file
-const packer = createTarPacker(itemGenerator());
+// Create GZipped tar stream and write to file
+const packer = createTarPacker(itemGenerator(), 'gzip');
 await storeReaderToFile(packer, 'archive.tar.gz');   // Use helper to awaitable
+```
+
+### Extracting minimum example
+
+tar-vern provides tar extraction through async generator, allowing you to process entries as they are extracted from the tar archive.
+
+```mermaid
+graph LR
+  A[TAR File<br/>'foobar.tar'] --> B[TarExtractor]
+  
+  subgraph C["Async generator iteration"]
+    C1[Directory item]
+    C2[String content]
+    C3[Buffer content]
+    C4[Readable content]
+  end
+  
+  B --> C1
+  B --> C2
+  B --> C3
+  B --> C4
+```
+
+```typescript
+import { createReadStream } from 'fs';
+import { createTarExtractor } from 'tar-vern';
+
+// Read GZipped tar file and extract entries
+const stream = createReadStream('archive.tar.gz');
+
+for await (const extractedItem of createTarExtractor(stream)) {
+  if (extractedItem.kind === 'file') {
+    console.log(`File: ${extractedItem.path}`);
+    
+    // Get content as string or buffer
+    const content = await extractedItem.getContent('string');
+    console.log(`Content: ${content}`);
+  } else {
+    console.log(`Directory: ${extractedItem.path}`);
+  }
+}
 ```
 
 ## Features
 
-- Streaming API: Memory-efficient processing of large files
+- Bidirectional streaming: Both creation and extraction of tar archives
+- Memory-efficient: Streaming API for processing large files without buffering
 - Multiple content sources: String, Buffer, ReadableStream, file paths and async generators
 - Metadata preservation: File permissions, ownership, timestamps
-- Built-in compression: GZip compression support (`tar.gz` format)
-- No external dependencies.
+- Built-in compression/decompression: GZip compression support (`tar.gz` format)
+- Flexible content access: Extract files as string or Buffer on demand
+- Error handling: Comprehensive validation and error reporting
+- Abort signal support: Cancellable operations
+- No external dependencies: Pure TypeScript implementation
 
 ----
 
@@ -201,9 +257,93 @@ await storeReaderToFile(packer, 'archive.tar');
 
 ----
 
-## Usage for tar unpacking
+## Usage for tar extracting
 
-TODO:
+### ExtractedEntryItem basis
+
+The extractor yields `ExtractedEntryItem` objects that represent files and directories in the tar archive. For files, you can access the content using the `getContent()` method:
+
+```typescript
+// Process each extracted entry
+for await (const item of createTarExtractor(stream)) {
+  console.log(`${item.kind}: ${item.path}`);
+  console.log(`Mode: ${item.mode.toString(8)}`);
+  console.log(`Owner: ${item.uname}:${item.gname} (${item.uid}:${item.gid})`);
+  console.log(`Date: ${item.date}`);
+  
+  if (item.kind === 'file') {
+    // Get content as string
+    const textContent = await item.getContent('string');
+    
+    // Or get content as Buffer
+    const binaryContent = await item.getContent('buffer');
+  }
+}
+```
+
+### With GZip decompression
+
+Support for gzip-compressed tar files (`.tar.gz` or `.tgz`):
+
+```typescript
+import { createReadStream } from 'fs';
+import { createTarExtractor } from 'tar-vern';
+
+// Extract from compressed tar file
+const stream = createReadStream('archive.tar.gz');
+
+for await (const item of createTarExtractor(stream, 'gzip')) {
+  console.log(`Extracted: ${item.path}`);
+  
+  if (item.kind === 'file') {
+    const content = await item.getContent('buffer');
+    // Process content...
+  }
+}
+```
+
+### Error handling
+
+The extractor validates tar format and throws appropriate errors:
+
+```typescript
+try {
+  for await (const item of createTarExtractor(stream)) {
+    // Process items...
+  }
+} catch (error) {
+  if (error.message.includes('Invalid tar format')) {
+    console.error('Not a valid tar file');
+  } else if (error.message.includes('Invalid checksum')) {
+    console.error('Corrupted tar file');
+  } else {
+    console.error('Extraction error:', error.message);
+  }
+}
+```
+
+----
+
+## Abort signal support
+
+You can cancel extraction using AbortSignal:
+
+```typescript
+const controller = new AbortController();
+
+// Cancel after 5 seconds
+setTimeout(() => controller.abort(), 5000);
+
+try {
+  for await (const item of createTarExtractor(stream, 'none', controller.signal)) {
+    // Process items...
+  }
+} catch (error) {
+  if (error.name === 'AbortError') {
+    console.log('Extraction cancelled');
+  }
+}
+```
 
 ----
 
