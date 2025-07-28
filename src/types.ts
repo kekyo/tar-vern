@@ -113,13 +113,14 @@ export type EntryItem = FileItem | DirectoryItem;
 export interface ExtractedFileItem extends EntryItemBase {
   readonly kind: 'file';
   /**
-   * Get the file content as string or buffer
-   * @param type - The type of data to retrieve ('string' or 'buffer')
-   * @returns The file content as string or buffer
+   * Get the file content as string, buffer, or readable stream
+   * @param type - The type of data to retrieve ('string', 'buffer', or 'readable')
+   * @returns The file content as string, buffer, or readable stream
    */
   getContent(type: 'string'): Promise<string>;
   getContent(type: 'buffer'): Promise<Buffer>;
-  getContent(type: 'string' | 'buffer'): Promise<string | Buffer>;
+  getContent(type: 'readable'): Promise<Readable>;
+  getContent(type: 'string' | 'buffer' | 'readable'): Promise<string | Buffer | Readable>;
 }
 
 /**

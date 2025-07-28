@@ -273,8 +273,12 @@ export const createTarExtractor = async function* (
         getContent: async (type: any) => {
           if (type === 'string') {
             return dataBuffer.toString('utf8');
-          } else {
+          } else if (type === 'buffer') {
             return dataBuffer;
+          } else if (type === 'readable') {
+            return Readable.from([dataBuffer]);
+          } else {
+            throw new Error(`Unsupported content type: ${type}`);
           }
         }
       } as ExtractedFileItem;

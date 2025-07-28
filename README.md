@@ -70,7 +70,7 @@ graph LR
     C1[Directory item]
     C2[String content]
     C3[Buffer content]
-    C4[Readable content]
+    C4[Readable stream]
   end
   
   B --> C1
@@ -90,7 +90,7 @@ for await (const extractedItem of createTarExtractor(stream)) {
   if (extractedItem.kind === 'file') {
     console.log(`File: ${extractedItem.path}`);
     
-    // Get content as string or buffer
+    // Get content as string, buffer, or readable stream
     const content = await extractedItem.getContent('string');
     console.log(`Content: ${content}`);
   } else {
@@ -106,7 +106,7 @@ for await (const extractedItem of createTarExtractor(stream)) {
 - Multiple content sources: String, Buffer, ReadableStream, file paths and async generators
 - Metadata preservation: File permissions, ownership, timestamps
 - Built-in compression/decompression: GZip compression support (`tar.gz` format)
-- Flexible content access: Extract files as string or Buffer on demand
+- Flexible content access: Extract files as string, Buffer, or Readable stream on demand
 - Error handling: Comprehensive validation and error reporting
 - Abort signal support: Cancellable operations
 - No external dependencies: Pure TypeScript implementation
@@ -277,6 +277,10 @@ for await (const item of createTarExtractor(stream)) {
     
     // Or get content as Buffer
     const binaryContent = await item.getContent('buffer');
+    
+    // Or get content as Readable stream
+    const streamContent = await item.getContent('readable');
+    // Process stream: for await (const chunk of streamContent) { ... }
   }
 }
 ```
@@ -296,8 +300,14 @@ for await (const item of createTarExtractor(stream, 'gzip')) {
   console.log(`Extracted: ${item.path}`);
   
   if (item.kind === 'file') {
-    const content = await item.getContent('buffer');
-    // Process content...
+    // For large files, use readable stream to avoid memory issues
+    const stream = await item.getContent('readable');
+    
+    // Process content incrementally
+    for await (const chunk of stream) {
+      // Process each chunk without loading entire file into memory
+      console.log(`Processing chunk of ${chunk.length} bytes`);
+    }
   }
 }
 ```

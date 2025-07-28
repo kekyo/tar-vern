@@ -27,9 +27,7 @@ npm install tar-vern
 
 ----
 
-## Usage for tar packing
-
-### Minimum example
+## Minimal sample code
 
 tar-vern supplies file and directory information to pack through "TypeScript async generator."
 This allows you to specify pack data with very concise code.
@@ -58,16 +56,16 @@ const packer = createTarPacker(itemGenerator(), 'gzip');
 await storeReaderToFile(packer, 'archive.tar.gz');   // Use helper to awaitable
 ```
 
-tar-vern provides tar extraction through async generator, allowing you to process entries as they are extracted from the tar archive.
+tar-vern provides tar extraction through async generator too, allowing you to process entries as they are extracted from the tar archive.
 
 ```typescript
 import { createReadStream } from 'fs';
 import { createTarExtractor } from 'tar-vern';
 
 // Read GZipped tar file and extract entries
-const stream = createReadStream('archive.tar.gz');
+const readableStream = createReadStream('archive.tar.gz');
 
-for await (const extractedItem of createTarExtractor(stream), 'gzip') {
+for await (const extractedItem of createTarExtractor(readableStream), 'gzip') {
   if (extractedItem.kind === 'file') {
     console.log(`File: ${extractedItem.path}`);
     

@@ -280,7 +280,7 @@ describe('Tar extractor test', () => {
     expect(content).toBe('This is compressed content');
   });
 
-  it('should handle FileItemReader getContent with both string and buffer types', async () => {
+  it('should handle getContent with string, buffer, and readable types', async () => {
     // Create test file
     const sourceDir = join(testDir, 'source10');
     mkdirSync(sourceDir, { recursive: true });
@@ -307,8 +307,21 @@ describe('Tar extractor test', () => {
     expect(Buffer.isBuffer(bufferContent)).toBe(true);
     expect(bufferContent.toString()).toBe(testContent);
     
-    // Both should return the same content
+    // Test getContent('readable')
+    const readableContent = await fileItem.getContent('readable');
+    expect(readableContent).toBeInstanceOf(require('stream').Readable);
+    
+    // Read from the stream and verify content
+    const chunks: Buffer[] = [];
+    for await (const chunk of readableContent) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const streamContent = Buffer.concat(chunks).toString();
+    expect(streamContent).toBe(testContent);
+    
+    // All three methods should return the same content
     expect(bufferContent.toString()).toBe(stringContent);
+    expect(streamContent).toBe(stringContent);
   });
 
   it('should properly handle padding in tar format', async () => {

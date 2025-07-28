@@ -5,4 +5,5 @@
 
 export type * from './types';
 export * from './packer';
+export * from './extractor';
 export * from './utils';
