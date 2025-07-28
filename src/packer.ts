@@ -5,7 +5,7 @@
 
 import { Readable } from "stream";
 import { createGzip } from "zlib";
-import { getBuffer } from "./utils";
+import { getBuffer, MAX_NAME, MAX_PREFIX } from "./utils";
 import { CompressionTypes, EntryItem } from "./types";
 
 /**
@@ -36,10 +36,6 @@ const truncateUtf8Safe = (str: string, maxBytes: number) => {
   }
   return str.slice(0, i);
 }
-
-// Tar specification: name max 100 bytes, prefix max 155 bytes
-const MAX_NAME = 100;
-const MAX_PREFIX = 155;
 
 /**
  * Split a path into a name and a prefix

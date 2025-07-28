@@ -8,6 +8,10 @@ import { stat } from "fs/promises";
 import { Readable } from "stream";
 import { CreateItemOptions, CreateReadableFileItemOptions, FileItem, DirectoryItem, ReflectStats, CreateDirectoryItemOptions } from "./types";
 
+// Tar specification: name max 100 bytes, prefix max 155 bytes
+export const MAX_NAME = 100;
+export const MAX_PREFIX = 155;
+
 /**
  * Get the user/group name from the candidate name or ID
  * @param candidateName - The candidate user/group name
