@@ -4,7 +4,7 @@ import { join } from 'path';
 import { createReadStream, mkdirSync, mkdtempSync, readFileSync, writeFileSync, chmodSync } from 'fs';
 import { spawn } from 'child_process';
 import { createTarExtractor } from '../src/extractor';
-import { CompressionTypes, EntryItem, FileItemReader } from '../src/types';
+import { CompressionTypes, ExtractedEntryItem, FileItemReader } from '../src/types';
 
 describe('Tar extractor test', () => {
   const testBaseDir = mkdtempSync(join(tmpdir(), 'tar-vern-extractor-'));
@@ -43,8 +43,8 @@ describe('Tar extractor test', () => {
     await runCommand('tar', ['--format=ustar', '-czf', tarPath, '-C', sourceDir, ...files]);
   }
 
-  const collectEntries = async (tarPath: string, compressionType?: CompressionTypes): Promise<EntryItem[]> => {
-    const entries: EntryItem[] = [];
+  const collectEntries = async (tarPath: string, compressionType?: CompressionTypes): Promise<ExtractedEntryItem[]> => {
+    const entries: ExtractedEntryItem[] = [];
     const stream = createReadStream(tarPath);
     
     for await (const entry of createTarExtractor(stream, compressionType)) {
@@ -430,7 +430,7 @@ describe('Tar extractor test', () => {
       const extractor = createTarExtractor(stream);
       
       await expect(async () => {
-        const entries: EntryItem[] = [];
+        const entries: ExtractedEntryItem[] = [];
         for await (const entry of extractor) {
           entries.push(entry);
         }
@@ -455,7 +455,7 @@ describe('Tar extractor test', () => {
       const extractor = createTarExtractor(stream);
       
       await expect(async () => {
-        const entries: EntryItem[] = [];
+        const entries: ExtractedEntryItem[] = [];
         for await (const entry of extractor) {
           entries.push(entry);
         }
@@ -480,7 +480,7 @@ describe('Tar extractor test', () => {
       const extractor = createTarExtractor(stream);
       
       const promise = (async () => {
-        const entries: EntryItem[] = [];
+        const entries: ExtractedEntryItem[] = [];
         for await (const entry of extractor) {
           entries.push(entry);
         }

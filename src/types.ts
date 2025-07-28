@@ -43,20 +43,6 @@ export interface EntryItemReadableContent extends EntryItemContentBase {
  */
 export type EntryItemContent = EntryItemGeneratorContent | EntryItemReadableContent;
 
-/**
- * Interface for file item reader that allows choosing how to retrieve data
- */
-export interface FileItemReader {
-  /**
-   * Get the file content as string or buffer
-   * @param type - The type of data to retrieve ('string' or 'buffer')
-   * @returns The file content as string or buffer
-   */
-  getContent(type: 'string'): Promise<string>;
-  getContent(type: 'buffer'): Promise<Buffer>;
-  getContent(type: 'string' | 'buffer'): Promise<string | Buffer>;
-}
-
 ///////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -94,6 +80,8 @@ export interface EntryItemBase {
   readonly date: Date;
 }
 
+///////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Interface for all file entry items
  */
@@ -102,7 +90,7 @@ export interface FileItem extends EntryItemBase {
   /**
    * The content of the item
    */
-  readonly content: string | Buffer | EntryItemContent | FileItemReader;
+  readonly content: string | Buffer | EntryItemContent;
 }
 
 /**
@@ -116,6 +104,45 @@ export interface DirectoryItem extends EntryItemBase {
  * Union type for all entry items
  */
 export type EntryItem = FileItem | DirectoryItem;
+
+///////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Interface for file item reader that allows choosing how to retrieve data
+ */
+export interface FileItemReader {
+  /**
+   * Get the file content as string or buffer
+   * @param type - The type of data to retrieve ('string' or 'buffer')
+   * @returns The file content as string or buffer
+   */
+  getContent(type: 'string'): Promise<string>;
+  getContent(type: 'buffer'): Promise<Buffer>;
+  getContent(type: 'string' | 'buffer'): Promise<string | Buffer>;
+}
+
+/**
+ * Interface for extracted all file entry items
+ */
+export interface ExtractedFileItem extends EntryItemBase {
+  readonly kind: 'file';
+  /**
+   * The content of the item
+   */
+  readonly contentReader: FileItemReader;
+}
+
+/**
+ * Interface for extracted all directory entry items
+ */
+export interface ExtractedDirectoryItem extends EntryItemBase {
+  readonly kind: 'directory';
+}
+
+/**
+ * Union type for extracted all entry items
+ */
+export type ExtractedEntryItem = ExtractedFileItem | ExtractedDirectoryItem;
 
 ///////////////////////////////////////////////////////////////////////////////////
 

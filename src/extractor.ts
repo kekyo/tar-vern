@@ -5,7 +5,7 @@
 
 import { Readable } from "stream";
 import { createGunzip } from "zlib";
-import { CompressionTypes, EntryItem, FileItemReader } from "./types";
+import { CompressionTypes, ExtractedDirectoryItem, ExtractedEntryItem, ExtractedFileItem, FileItemReader } from "./types";
 import { getBuffer } from "./utils";
 
 /**
@@ -205,7 +205,7 @@ class BufferedAsyncIterator implements AsyncIterator<any> {
 export const createTarExtractor = async function* (
   readable: Readable,
   compressionType?: CompressionTypes,
-  signal?: AbortSignal): AsyncGenerator<EntryItem, void, unknown> {
+  signal?: AbortSignal): AsyncGenerator<ExtractedEntryItem, void, unknown> {
 
   const ct = compressionType ?? 'none';
 
@@ -265,7 +265,7 @@ export const createTarExtractor = async function* (
         uname: header.uname,
         gname: header.gname,
         date: header.mtime
-      };
+      } as ExtractedDirectoryItem;
     } else {
       // Read file data
       const dataBuffer = await readExactBytes(iterator, header.size, signal);
@@ -289,8 +289,8 @@ export const createTarExtractor = async function* (
         uname: header.uname,
         gname: header.gname,
         date: header.mtime,
-        content: createFileItemReader(dataBuffer)
-      };
+        contentReader: createFileItemReader(dataBuffer)
+      } as ExtractedFileItem;
     }
   }
 };
