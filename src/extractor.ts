@@ -33,22 +33,26 @@ const parseString = (buffer: Buffer, offset: number, length: number): string => 
 
 /**
  * Read exact number of bytes from stream
- * @param stream - The readable stream
+ * @param iterator - The async iterator
  * @param size - The number of bytes to read
  * @param signal - The abort signal
  * @returns The buffer containing the read bytes
  */
-const readExactBytes = async (stream: AsyncIterator<any>, size: number, signal?: AbortSignal): Promise<Buffer | null> => {
+const readExactBytes = async (
+  iterator: AsyncIterator<string | Buffer>,
+  size: number,
+  signal: AbortSignal | undefined): Promise<Buffer | undefined> => {
+
   const chunks: Buffer[] = [];
   let totalRead = 0;
 
   while (totalRead < size) {
     signal?.throwIfAborted();
     
-    const { value, done } = await stream.next();
+    const { value, done } = await iterator.next();
     if (done) {
       if (totalRead === 0) {
-        return null; // No data at all
+        return undefined; // No data at all
       } else {
         throw new Error(`Unexpected end of stream: expected ${size} bytes, got ${totalRead} bytes`);
       }
@@ -64,7 +68,7 @@ const readExactBytes = async (stream: AsyncIterator<any>, size: number, signal?:
       // We read more than needed, split the chunk
       chunks.push(chunk.subarray(0, needed));
       // Put back the remaining data
-      await stream.return?.(chunk.subarray(needed));
+      await iterator.return?.(chunk.subarray(needed));
       totalRead = size;
     }
   }
@@ -73,25 +77,34 @@ const readExactBytes = async (stream: AsyncIterator<any>, size: number, signal?:
 };
 
 /**
+ * Tar file/directory entry item.
+ */
+interface EntryItemInfo {
+  readonly kind: 'file' | 'directory';
+  readonly path: string;
+  readonly size: number;
+  readonly mode: number;
+  readonly uid: number;
+  readonly gid: number;
+  readonly mtime: Date;
+  readonly uname: string;
+  readonly gname: string;
+  readonly checksum: number;
+  /**
+   * This entry (file) item is consumed.
+   */
+  consumed: boolean;
+}
+
+/**
  * Parse tar header from buffer
  * @param buffer - The buffer containing the tar header
  * @returns The parsed entry information or null if end of archive
  */
-const parseTarHeader = (buffer: Buffer): { 
-  type: 'file' | 'directory',
-  path: string,
-  size: number,
-  mode: number,
-  uid: number,
-  gid: number,
-  mtime: Date,
-  uname: string,
-  gname: string,
-  checksum: number
-} | null => {
+const parseTarHeader = (buffer: Buffer): EntryItemInfo | undefined => {
   // Check if this is the end of archive (all zeros)
   if (buffer.every(b => b === 0)) {
-    return null;
+    return undefined;
   }
 
   // Parse header fields
@@ -134,10 +147,10 @@ const parseTarHeader = (buffer: Buffer): {
   }
 
   // Determine type
-  const type = typeflag === '5' ? 'directory' : 'file';
+  const kind = typeflag === '5' ? 'directory' : 'file';
 
   return {
-    type,
+    kind,
     path,
     size,
     mode,
@@ -146,35 +159,100 @@ const parseTarHeader = (buffer: Buffer): {
     mtime,
     uname: uname || uid.toString(),
     gname: gname || gid.toString(),
-    checksum
+    checksum,
+    consumed: false
   };
 };
 
 /**
  * Create a buffered async iterator that allows returning data
  */
-class BufferedAsyncIterator implements AsyncIterator<any> {
-  private buffer: any[] = [];
-  private iterator: AsyncIterator<any>;
-
-  constructor(iterable: AsyncIterable<any>) {
-    this.iterator = iterable[Symbol.asyncIterator]();
-  }
-
-  async next(): Promise<IteratorResult<any>> {
-    if (this.buffer.length > 0) {
-      return { value: this.buffer.shift()!, done: false };
+const createBufferedAsyncIterator = (iterable: AsyncIterable<string | Buffer>): AsyncIterator<string | Buffer> => {
+  const buffer: (string | Buffer)[] = [];
+  const iterator = iterable[Symbol.asyncIterator]();
+  return {
+    next: async () => {
+      if (buffer.length > 0) {
+        return { value: buffer.shift()!, done: false };
+      }
+      return iterator.next();
+    },
+    return: async (value?: string | Buffer) => {
+      if (value !== undefined) {
+        buffer.unshift(value);
+      }
+      return { value: undefined, done: false };
     }
-    return this.iterator.next();
-  }
+  };
+};
 
-  async return(value?: any): Promise<IteratorResult<any>> {
-    if (value !== undefined) {
-      this.buffer.unshift(value);
-    }
-    return { value: undefined, done: false };
+/**
+ * Iterator will be skip padding bytes.
+ * @param iterator - Async iterator
+ * @param contentSize - Total content size to calculate boundary position
+ * @param signal - Abort signal
+ */
+const skipPaddingBytesTo512Boundary = async (
+  iterator: AsyncIterator<string | Buffer>,
+  contentSize: number,
+  signal: AbortSignal | undefined) => {
+  // Skip padding bytes to next 512-byte boundary
+  const padding = (512 - (contentSize % 512)) % 512;
+  if (padding > 0) {
+    await readExactBytes(iterator, padding, signal);
   }
-}
+};
+
+/**
+ * Create a readable stream from an async iterator with size limit
+ * @param iterator - The async iterator to read from
+ * @param size - The number of bytes to read
+ * @param signal - The abort signal
+ * @returns Readable stream
+ */
+const createReadableFromIterator = (
+  iterator: AsyncIterator<string | Buffer>,
+  size: number,
+  signal: AbortSignal | undefined,
+  consumedRef: { consumed: boolean }
+): Readable => {
+  const generator = async function*() {
+    let remainingBytes = size;
+    
+    while (remainingBytes > 0) {
+      signal?.throwIfAborted();
+
+      const { value, done } = await iterator.next();
+      if (done) {
+        throw new Error(`Unexpected end of stream: expected ${size} bytes, remaining ${remainingBytes} bytes`);
+      }
+
+      const chunk = getBuffer(value);
+      if (chunk.length <= remainingBytes) {
+        remainingBytes -= chunk.length;
+        yield chunk;
+      } else {
+        // We read more than needed
+        const needed = chunk.subarray(0, remainingBytes);
+        const excess = chunk.subarray(remainingBytes);
+        remainingBytes = 0;
+        
+        // Return excess data to the iterator
+        await iterator.return?.(excess);
+        yield needed;
+        break;
+      }
+    }
+
+    // Finalize to skip boundary
+    await skipPaddingBytesTo512Boundary(iterator, size, signal);
+
+    // Finished to consume
+    consumedRef.consumed = true;
+  };
+
+  return Readable.from(generator());
+};
 
 /**
  * Create a tar extractor
@@ -204,13 +282,34 @@ export const createTarExtractor = async function* (
       break;
   }
 
-  const iterator = new BufferedAsyncIterator(inputStream);
+  // Get async iterator from the stream
+  const iterator = createBufferedAsyncIterator(inputStream);
 
+  // Last entry item
+  let header: EntryItemInfo | undefined;
+
+  // For each tar items
   while (true) {
     signal?.throwIfAborted();
 
+    // Did not consume last file item yielding?
+    if (header?.kind === 'file' && !header.consumed) {
+      // Have to skip the file contents and boundary
+
+      // Read entire contents just now
+      const dataBuffer = await readExactBytes(iterator, header.size, signal);
+      if (dataBuffer === undefined) {
+        throw new Error(`Unexpected end of stream while reading file data for ${header.path}`);
+      }
+      // Finalize to skip boundary
+      await skipPaddingBytesTo512Boundary(iterator, header.size, signal);
+
+      // Mark consumed
+      header.consumed = true;
+    }
+
     // Read header (512 bytes)
-    let headerBuffer: Buffer | null;
+    let headerBuffer: Buffer | undefined;
     try {
       headerBuffer = await readExactBytes(iterator, 512, signal);
     } catch (error) {
@@ -220,22 +319,22 @@ export const createTarExtractor = async function* (
       throw error;
     }
     
-    if (!headerBuffer) {
+    if (headerBuffer === undefined) {
       break; // End of stream
     }
 
     // Parse header
-    const header = parseTarHeader(headerBuffer);
+    header = parseTarHeader(headerBuffer);
     if (!header) {
       // Check for second terminator block
       const secondBlock = await readExactBytes(iterator, 512, signal);
-      if (!secondBlock || secondBlock.every(b => b === 0)) {
+      if (secondBlock === undefined || secondBlock.every(b => b === 0)) {
         break; // Proper end of archive
       }
       throw new Error('Invalid tar format: expected terminator block');
     }
 
-    if (header.type === 'directory') {
+    if (header.kind === 'directory') {
       // Yield directory entry
       yield {
         kind: 'directory',
@@ -248,37 +347,58 @@ export const createTarExtractor = async function* (
         date: header.mtime
       } as ExtractedDirectoryItem;
     } else {
-      // Read file data
-      const dataBuffer = await readExactBytes(iterator, header.size, signal);
-      if (!dataBuffer) {
-        throw new Error(`Unexpected end of stream while reading file data for ${header.path}`);
-      }
-
-      // Skip padding bytes to next 512-byte boundary
-      const padding = (512 - (header.size % 512)) % 512;
-      if (padding > 0) {
-        await readExactBytes(iterator, padding, signal);
-      }
-
-      // Yield file entry with FileItemReader
+      // Capture current header to avoid closure issues
+      const currentHeader = header;
+      
+      // Yield file entry with lazy getContent
       yield {
         kind: 'file',
-        path: header.path,
-        mode: header.mode,
-        uid: header.uid,
-        gid: header.gid,
-        uname: header.uname,
-        gname: header.gname,
-        date: header.mtime,
+        path: currentHeader.path,
+        mode: currentHeader.mode,
+        uid: currentHeader.uid,
+        gid: currentHeader.gid,
+        uname: currentHeader.uname,
+        gname: currentHeader.gname,
+        date: currentHeader.mtime,
         getContent: async (type: any) => {
-          if (type === 'string') {
-            return dataBuffer.toString('utf8');
-          } else if (type === 'buffer') {
-            return dataBuffer;
-          } else if (type === 'readable') {
-            return Readable.from([dataBuffer]);
-          } else {
-            throw new Error(`Unsupported content type: ${type}`);
+          // Is multiple called
+          if (currentHeader.consumed) {
+            throw new Error('Content has already been consumed. Multiple calls to getContent are not supported.');
+          }
+
+          switch (type) {
+            // For string
+            case 'string': {
+              // Read entire contents just now
+              const dataBuffer = await readExactBytes(iterator, currentHeader.size, signal);
+              if (dataBuffer === undefined) {
+                throw new Error(`Unexpected end of stream while reading file data for ${currentHeader.path}`);
+              }
+              // Finalize to skip boundary
+              await skipPaddingBytesTo512Boundary(iterator, currentHeader.size, signal);
+              currentHeader.consumed = true;
+              return dataBuffer.toString('utf8');
+            }
+            // For buffer
+            case 'buffer': {
+              // Read entire contents just now
+              const dataBuffer = await readExactBytes(iterator, currentHeader.size, signal);
+              if (dataBuffer === undefined) {
+                throw new Error(`Unexpected end of stream while reading file data for ${currentHeader.path}`);
+              }
+              // Finalize to skip boundary
+              await skipPaddingBytesTo512Boundary(iterator, currentHeader.size, signal);
+              currentHeader.consumed = true;
+              return dataBuffer;
+            }
+            // For Readble stream
+            case 'readable': {
+              // Get Readble object (to delegate)
+              const readable = createReadableFromIterator(iterator, currentHeader.size, signal, currentHeader);
+              return readable;
+            }
+            default:
+              throw new Error(`Unsupported content type: ${type}`);
           }
         }
       } as ExtractedFileItem;

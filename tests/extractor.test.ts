@@ -43,12 +43,18 @@ describe('Tar extractor test', () => {
     await runCommand('tar', ['--format=ustar', '-czf', tarPath, '-C', sourceDir, ...files]);
   }
 
-  const collectEntries = async (tarPath: string, compressionType?: CompressionTypes): Promise<ExtractedEntryItem[]> => {
-    const entries: ExtractedEntryItem[] = [];
+  const collectEntries = async (tarPath: string, compressionType?: CompressionTypes): Promise<(ExtractedEntryItem & { content?: string | Buffer })[]> => {
+    const entries: (ExtractedEntryItem & { content?: string | Buffer })[] = [];
     const stream = createReadStream(tarPath);
     
     for await (const entry of createTarExtractor(stream, compressionType)) {
-      entries.push(entry);
+      if (entry.kind === 'file') {
+        // Immediately consume file content to avoid streaming issues
+        const content = await (entry as ExtractedFileItem).getContent('buffer');
+        entries.push({ ...entry, content });
+      } else {
+        entries.push(entry);
+      }
     }
     
     return entries;
@@ -72,13 +78,9 @@ describe('Tar extractor test', () => {
     expect(entries[0].path).toBe('test.txt');
     
     // Verify content
-    const fileItem = entries[0] as ExtractedFileItem;
-    
-    const contentAsString = await fileItem.getContent('string');
-    expect(contentAsString).toBe('Hello, world!');
-    
-    const contentAsBuffer = await fileItem.getContent('buffer');
-    expect(contentAsBuffer.toString()).toBe('Hello, world!');
+    const fileItem = entries[0];
+    expect(fileItem.content).toBeDefined();
+    expect(fileItem.content!.toString('utf8')).toBe('Hello, world!');
   });
 
   it('should extract directory entries', async () => {
@@ -125,21 +127,21 @@ describe('Tar extractor test', () => {
     
     expect(stringFile).toBeDefined();
     expect(stringFile!.kind).toBe('file');
-    const content1 = await (stringFile as ExtractedFileItem).getContent('string');
-    expect(content1).toBe('Test data for multiple files');
+    expect(stringFile!.content).toBeDefined();
+    expect(stringFile!.content!.toString('utf8')).toBe('Test data for multiple files');
     
     expect(bufferFile).toBeDefined();
     expect(bufferFile!.kind).toBe('file');
-    const content2 = await (bufferFile as ExtractedFileItem).getContent('string');
-    expect(content2).toBe('Buffer content here');
+    expect(bufferFile!.content).toBeDefined();
+    expect(bufferFile!.content!.toString('utf8')).toBe('Buffer content here');
     
     expect(subdir).toBeDefined();
     expect(subdir!.kind).toBe('directory');
     
     expect(nestedFile).toBeDefined();
     expect(nestedFile!.kind).toBe('file');
-    const content3 = await (nestedFile as ExtractedFileItem).getContent('string');
-    expect(content3).toBe('Nested content');
+    expect(nestedFile!.content).toBeDefined();
+    expect(nestedFile!.content!.toString('utf8')).toBe('Nested content');
   });
 
   it('should extract large files correctly', async () => {
@@ -165,9 +167,9 @@ describe('Tar extractor test', () => {
     expect(entries[0].kind).toBe('file');
     expect(entries[0].path).toBe('large.bin');
     
-    const extractedData = await (entries[0] as ExtractedFileItem).getContent('buffer');
-    expect(extractedData.length).toBe(size1MB);
-    expect(extractedData.equals(randomData)).toBe(true);
+    expect(entries[0].content).toBeDefined();
+    expect(entries[0].content!.length).toBe(size1MB);
+    expect((entries[0].content! as Buffer).equals(randomData)).toBe(true);
   });
 
   it('should preserve file metadata accurately', async () => {
@@ -210,8 +212,8 @@ describe('Tar extractor test', () => {
     expect(entries[0].kind).toBe('file');
     expect(entries[0].path).toBe('empty.txt');
     
-    const content = await (entries[0] as ExtractedFileItem).getContent('string');
-    expect(content).toBe('');
+    expect(entries[0].content).toBeDefined();
+    expect(entries[0].content!.toString('utf8')).toBe('');
   });
 
   it('should extract files with long paths correctly', async () => {
@@ -233,8 +235,8 @@ describe('Tar extractor test', () => {
     expect(fileEntry).toBeDefined();
     expect(fileEntry!.kind).toBe('file');
     
-    const content = await (fileEntry as ExtractedFileItem).getContent('string');
-    expect(content).toBe('Long path content');
+    expect(fileEntry!.content).toBeDefined();
+    expect(fileEntry!.content!.toString('utf8')).toBe('Long path content');
   });
 
   it('should handle UTF-8 filenames correctly', async () => {
@@ -255,8 +257,8 @@ describe('Tar extractor test', () => {
     expect(fileEntry).toBeDefined();
     expect(fileEntry!.kind).toBe('file');
     
-    const content = await (fileEntry as ExtractedFileItem).getContent('string');
-    expect(content).toBe('日本語のコンテンツ');
+    expect(fileEntry!.content).toBeDefined();
+    expect(fileEntry!.content!.toString('utf8')).toBe('日本語のコンテンツ');
   });
 
   it('should extract gzip compressed tar files', async () => {
@@ -276,8 +278,8 @@ describe('Tar extractor test', () => {
     expect(entries[0].kind).toBe('file');
     expect(entries[0].path).toBe('compressed.txt');
     
-    const content = await (entries[0] as ExtractedFileItem).getContent('string');
-    expect(content).toBe('This is compressed content');
+    expect(entries[0].content).toBeDefined();
+    expect(entries[0].content!.toString('utf8')).toBe('This is compressed content');
   });
 
   it('should handle getContent with string, buffer, and readable types', async () => {
@@ -291,37 +293,45 @@ describe('Tar extractor test', () => {
     const tarPath = join(testDir, 'reader.tar');
     await createTar(sourceDir, tarPath, ['reader-test.txt']);
 
-    // Extract
-    const entries = await collectEntries(tarPath);
-    
-    expect(entries).toHaveLength(1);
-    const fileItem = entries[0] as ExtractedFileItem;
-    
-    // Test getContent('string')
-    const stringContent = await fileItem.getContent('string');
-    expect(typeof stringContent).toBe('string');
-    expect(stringContent).toBe(testContent);
-    
-    // Test getContent('buffer')
-    const bufferContent = await fileItem.getContent('buffer');
-    expect(Buffer.isBuffer(bufferContent)).toBe(true);
-    expect(bufferContent.toString()).toBe(testContent);
-    
-    // Test getContent('readable')
-    const readableContent = await fileItem.getContent('readable');
-    expect(readableContent).toBeInstanceOf(require('stream').Readable);
-    
-    // Read from the stream and verify content
-    const chunks: Buffer[] = [];
-    for await (const chunk of readableContent) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    // Test string content
+    {
+      const stream1 = createReadStream(tarPath);
+      const extractor1 = createTarExtractor(stream1);
+      const { value: entry1 } = await extractor1.next();
+      expect(entry1!.kind).toBe('file');
+      const stringContent = await (entry1 as ExtractedFileItem).getContent('string');
+      expect(typeof stringContent).toBe('string');
+      expect(stringContent).toBe(testContent);
     }
-    const streamContent = Buffer.concat(chunks).toString();
-    expect(streamContent).toBe(testContent);
     
-    // All three methods should return the same content
-    expect(bufferContent.toString()).toBe(stringContent);
-    expect(streamContent).toBe(stringContent);
+    // Test buffer content  
+    {
+      const stream2 = createReadStream(tarPath);
+      const extractor2 = createTarExtractor(stream2);
+      const { value: entry2 } = await extractor2.next();
+      expect(entry2!.kind).toBe('file');
+      const bufferContent = await (entry2 as ExtractedFileItem).getContent('buffer');
+      expect(Buffer.isBuffer(bufferContent)).toBe(true);
+      expect(bufferContent.toString('utf8')).toBe(testContent);
+    }
+    
+    // Test readable content
+    {
+      const stream3 = createReadStream(tarPath);
+      const extractor3 = createTarExtractor(stream3);
+      const { value: entry3 } = await extractor3.next();
+      expect(entry3!.kind).toBe('file');
+      const readableContent = await (entry3 as ExtractedFileItem).getContent('readable');
+      expect(readableContent).toBeInstanceOf(require('stream').Readable);
+      
+      // Read from readable stream
+      const chunks: Buffer[] = [];
+      for await (const chunk of readableContent) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      const readableData = Buffer.concat(chunks).toString('utf8');
+      expect(readableData).toBe(testContent);
+    }
   });
 
   it('should properly handle padding in tar format', async () => {
@@ -345,12 +355,12 @@ describe('Tar extractor test', () => {
     const exactFile = entries.find(e => e.path === 'exact-size.txt');
     
     expect(oddFile).toBeDefined();
-    const content1 = await (oddFile as ExtractedFileItem).getContent('string');
-    expect(content1).toBe('x'.repeat(513));
+    expect(oddFile!.content).toBeDefined();
+    expect(oddFile!.content!.toString('utf8')).toBe('x'.repeat(513));
     
     expect(exactFile).toBeDefined();
-    const content2 = await (exactFile as ExtractedFileItem).getContent('string');
-    expect(content2).toBe('y'.repeat(512));
+    expect(exactFile!.content).toBeDefined();
+    expect(exactFile!.content!.toString('utf8')).toBe('y'.repeat(512));
   });
 
   it('should handle mixed file and directory entries', async () => {
@@ -394,14 +404,14 @@ describe('Tar extractor test', () => {
     expect(file3!.kind).toBe('file');
     
     // Verify content
-    const content1 = await (file1 as ExtractedFileItem).getContent('string');
-    expect(content1).toBe('File 1');
+    expect(file1!.content).toBeDefined();
+    expect(file1!.content!.toString('utf8')).toBe('File 1');
     
-    const content2 = await (file2 as ExtractedFileItem).getContent('string');
-    expect(content2).toBe('File 2');
+    expect(file2!.content).toBeDefined();
+    expect(file2!.content!.toString('utf8')).toBe('File 2');
     
-    const content3 = await (file3 as ExtractedFileItem).getContent('string');
-    expect(content3).toBe('File 3');
+    expect(file3!.content).toBeDefined();
+    expect(file3!.content!.toString('utf8')).toBe('File 3');
   });
 
   it('should handle binary files correctly', async () => {
@@ -426,9 +436,9 @@ describe('Tar extractor test', () => {
     expect(entries[0].kind).toBe('file');
     expect(entries[0].path).toBe('binary.dat');
     
-    const extractedData = await (entries[0] as ExtractedFileItem).getContent('buffer');
-    expect(extractedData.length).toBe(256);
-    expect(extractedData.equals(binaryData)).toBe(true);
+    expect(entries[0].content).toBeDefined();
+    expect(entries[0].content!.length).toBe(256);
+    expect((entries[0].content! as Buffer).equals(binaryData)).toBe(true);
   });
 
   describe('Error handling', () => {
@@ -528,6 +538,101 @@ describe('Tar extractor test', () => {
       
       await expect(promise).rejects.toThrow('aborted');
       expect(count).toBe(5);
+    });
+
+    it('should throw error on multiple calls to getContent', async () => {
+      // Create test file
+      const sourceDir = join(testDir, 'multiple-calls');
+      mkdirSync(sourceDir, { recursive: true });
+      writeFileSync(join(sourceDir, 'test.txt'), 'Test content');
+      
+      const tarPath = join(testDir, 'multiple-calls.tar');
+      await createTar(sourceDir, tarPath, ['test.txt']);
+
+      // Test multiple calls to getContent
+      const stream = createReadStream(tarPath);
+      const extractor = createTarExtractor(stream);
+      const { value: entry } = await extractor.next();
+      
+      expect(entry!.kind).toBe('file');
+      const fileItem = entry as ExtractedFileItem;
+      
+      // First call should succeed
+      const content1 = await fileItem.getContent('string');
+      expect(content1).toBe('Test content');
+      
+      // Second call should throw error
+      await expect(fileItem.getContent('string')).rejects.toThrow('Content has already been consumed. Multiple calls to getContent are not supported.');
+      
+      // Third call with different type should also throw error
+      await expect(fileItem.getContent('buffer')).rejects.toThrow('Content has already been consumed. Multiple calls to getContent are not supported.');
+    });
+
+    it('should throw error when calling getContent after enumeration has progressed', async () => {
+      // Create test files
+      const sourceDir = join(testDir, 'enum-progress');
+      mkdirSync(sourceDir, { recursive: true });
+      writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
+      writeFileSync(join(sourceDir, 'file2.txt'), 'Content 2');
+      
+      const tarPath = join(testDir, 'enum-progress.tar');
+      await createTar(sourceDir, tarPath, ['file1.txt', 'file2.txt']);
+
+      // Start extraction
+      const stream = createReadStream(tarPath);
+      const extractor = createTarExtractor(stream);
+      
+      // Get first entry but don't consume content
+      const { value: entry1 } = await extractor.next();
+      expect(entry1!.kind).toBe('file');
+      const fileItem1 = entry1 as ExtractedFileItem;
+      
+      // Get second entry (this should auto-skip first file content)
+      const { value: entry2 } = await extractor.next();
+      expect(entry2!.kind).toBe('file');
+      
+      // Now trying to call getContent on first entry should throw error
+      await expect(fileItem1.getContent('string')).rejects.toThrow('Content has already been consumed. Multiple calls to getContent are not supported.');
+      await expect(fileItem1.getContent('buffer')).rejects.toThrow('Content has already been consumed. Multiple calls to getContent are not supported.');
+      await expect(fileItem1.getContent('readable')).rejects.toThrow('Content has already been consumed. Multiple calls to getContent are not supported.');
+      
+      // But second entry should still work
+      const content2 = await (entry2 as ExtractedFileItem).getContent('string');
+      expect(content2).toBe('Content 2');
+    });
+
+    it('should throw error on multiple calls to getContent even with readable type', async () => {
+      // Create test file
+      const sourceDir = join(testDir, 'readable-multiple');
+      mkdirSync(sourceDir, { recursive: true });
+      writeFileSync(join(sourceDir, 'test.txt'), 'Test content for readable');
+      
+      const tarPath = join(testDir, 'readable-multiple.tar');
+      await createTar(sourceDir, tarPath, ['test.txt']);
+
+      // Test readable type multiple calls
+      const stream = createReadStream(tarPath);
+      const extractor = createTarExtractor(stream);
+      const { value: entry } = await extractor.next();
+      
+      expect(entry!.kind).toBe('file');
+      const fileItem = entry as ExtractedFileItem;
+      
+      // First call with readable should succeed
+      const readable1 = await fileItem.getContent('readable');
+      expect(readable1).toBeDefined();
+      
+      // Consume the readable stream
+      const chunks: Buffer[] = [];
+      for await (const chunk of readable1) {
+        chunks.push(Buffer.from(chunk));
+      }
+      const content = Buffer.concat(chunks).toString('utf8');
+      expect(content).toBe('Test content for readable');
+      
+      // Second call should throw error (even though first was readable)
+      await expect(fileItem.getContent('string')).rejects.toThrow('Content has already been consumed. Multiple calls to getContent are not supported.');
+      await expect(fileItem.getContent('readable')).rejects.toThrow('Content has already been consumed. Multiple calls to getContent are not supported.');
     });
   });
 });
