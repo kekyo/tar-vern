@@ -77,6 +77,59 @@ const readExactBytes = async (
 };
 
 /**
+ * Skip exact number of bytes from stream without buffering
+ * @param iterator - The async iterator
+ * @param size - The number of bytes to skip
+ * @param signal - The abort signal
+ */
+const skipExactBytes = async (
+  iterator: AsyncIterator<string | Buffer>,
+  size: number,
+  signal: AbortSignal | undefined): Promise<void> => {
+
+  let totalSkipped = 0;
+
+  while (totalSkipped < size) {
+    signal?.throwIfAborted();
+    
+    const { value, done } = await iterator.next();
+    if (done) {
+      throw new Error(`Unexpected end of stream: expected to skip ${size} bytes, skipped ${totalSkipped} bytes`);
+    }
+
+    const chunk = getBuffer(value);
+    const needed = size - totalSkipped;
+    
+    if (chunk.length <= needed) {
+      totalSkipped += chunk.length;
+    } else {
+      // We read more than needed, put back the remaining data
+      await iterator.return?.(chunk.subarray(needed));
+      totalSkipped = size;
+    }
+  }
+};
+
+/**
+ * Iterator will be skip padding bytes.
+ * @param iterator - Async iterator
+ * @param contentSize - Total content size to calculate boundary position
+ * @param signal - Abort signal
+ */
+const skipPaddingBytesTo512Boundary = async (
+  iterator: AsyncIterator<string | Buffer>,
+  contentSize: number,
+  signal: AbortSignal | undefined) => {
+  // Skip padding bytes to next 512-byte boundary
+  const padding = (512 - (contentSize % 512)) % 512;
+  if (padding > 0) {
+    await skipExactBytes(iterator, padding, signal);
+  }
+};
+
+///////////////////////////////////////////////////////////////////////////////////
+
+/**
  * Tar file/directory entry item.
  */
 interface EntryItemInfo {
@@ -191,23 +244,6 @@ const createBufferedAsyncIterator = (
 };
 
 /**
- * Iterator will be skip padding bytes.
- * @param iterator - Async iterator
- * @param contentSize - Total content size to calculate boundary position
- * @param signal - Abort signal
- */
-const skipPaddingBytesTo512Boundary = async (
-  iterator: AsyncIterator<string | Buffer>,
-  contentSize: number,
-  signal: AbortSignal | undefined) => {
-  // Skip padding bytes to next 512-byte boundary
-  const padding = (512 - (contentSize % 512)) % 512;
-  if (padding > 0) {
-    await readExactBytes(iterator, padding, signal);
-  }
-};
-
-/**
  * Create a readable stream from an async iterator with size limit
  * @param iterator - The async iterator to read from
  * @param size - The number of bytes to read
@@ -302,11 +338,8 @@ export const createTarExtractor = async function* (
     if (header?.kind === 'file' && !header.consumed) {
       // Have to skip the file contents and boundary
 
-      // Read entire contents just now
-      const dataBuffer = await readExactBytes(iterator, header.size, signal);
-      if (dataBuffer === undefined) {
-        throw new Error(`Unexpected end of stream while reading file data for ${header.path}`);
-      }
+      // Skip entire contents without buffering
+      await skipExactBytes(iterator, header.size, signal);
       // Finalize to skip boundary
       await skipPaddingBytesTo512Boundary(iterator, header.size, signal);
 
