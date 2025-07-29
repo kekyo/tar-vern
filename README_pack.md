@@ -80,6 +80,18 @@ for await (const extractedItem of createTarExtractor(readableStream), 'gzip') {
 
 ----
 
+## Features
+
+- Bidirectional streaming: Both creation and extraction of tar archives
+- Memory-efficient: Streaming API for processing large files without content buffering
+- Multiple content sources: String, Buffer, ReadableStream, file paths and async generators
+- Metadata preservation: File permissions, ownership, timestamps
+- Built-in compression/decompression: GZip compression support (`tar.gz` format)
+- Flexible content access: Extract files as string, Buffer, or Readable stream on demand
+- Error handling: Comprehensive validation and error reporting
+- Abort signal support: Cancellable operations
+- No external dependencies: Pure TypeScript implementation
+
 For more information, [see repository documents](http://github.com/kekyo/tar-vern/).
 
 ----

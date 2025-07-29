@@ -86,7 +86,7 @@ import { createTarExtractor } from 'tar-vern';
 // Read GZipped tar file and extract entries
 const stream = createReadStream('archive.tar.gz');
 
-for await (const extractedItem of createTarExtractor(stream)) {
+for await (const extractedItem of createTarExtractor(stream, 'gzip')) {
   if (extractedItem.kind === 'file') {
     console.log(`File: ${extractedItem.path}`);
     
@@ -102,7 +102,7 @@ for await (const extractedItem of createTarExtractor(stream)) {
 ## Features
 
 - Bidirectional streaming: Both creation and extraction of tar archives
-- Memory-efficient: Streaming API for processing large files without buffering
+- Memory-efficient: Streaming API for processing large files without content buffering
 - Multiple content sources: String, Buffer, ReadableStream, file paths and async generators
 - Metadata preservation: File permissions, ownership, timestamps
 - Built-in compression/decompression: GZip compression support (`tar.gz` format)
