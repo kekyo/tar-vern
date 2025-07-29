@@ -6,6 +6,7 @@
 import { createReadStream, createWriteStream } from "fs";
 import { stat, mkdir, writeFile } from "fs/promises";
 import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { dirname, join } from "path";
 import { CreateItemOptions, CreateReadableFileItemOptions, FileItem, DirectoryItem, ReflectStats, CreateDirectoryItemOptions, EntryItem, ExtractedEntryItem, ExtractedFileItem } from "./types";
 
@@ -40,17 +41,20 @@ export const getBuffer = (data: Buffer | string) => {
  * @param path - The path to the directory in the tar archive
  * @param reflectStat - Whether to reflect optional stat of the file (mode, uid, gid, mtime. Default: 'none')
  * @param options - Metadata for the directory including path in tar archive
+ * @param signal - Optional abort signal to cancel the operation
  * @returns A DirectoryItem
  * @remarks When reflectStat is 'all' or 'exceptName', `options.directoryPath` must be provided.
  */
 export const createDirectoryItem = async (
   path: string,
   reflectStat?: ReflectStats,
-  options?: CreateDirectoryItemOptions
+  options?: CreateDirectoryItemOptions,
+  signal?: AbortSignal
 ): Promise<DirectoryItem> => {
   const rs = reflectStat ?? 'none';
 
   if (rs !== 'none' && options?.directoryPath) {
+    signal?.throwIfAborted();
     const stats = await stat(options.directoryPath);
     const mode = options?.mode ?? stats.mode;
     const uid = options?.uid ?? stats.uid;
@@ -81,13 +85,17 @@ export const createDirectoryItem = async (
  * @param path - The path to the file in the tar archive
  * @param content - Content data
  * @param options - Metadata for the file including path in tar archive
+ * @param signal - Optional abort signal to cancel the operation
  * @returns A FileItem
  */
 export const createFileItem = async (
   path: string,
   content: string | Buffer,
-  options?: CreateItemOptions
+  options?: CreateItemOptions,
+  signal?: AbortSignal
 ): Promise<FileItem> => {
+  signal?.throwIfAborted();
+  
   const mode = options?.mode ?? 0o644;
   const uid = options?.uid ?? 0;
   const gid = options?.gid ?? 0;
@@ -245,6 +253,7 @@ export const createReadFileItem = async (
   const rs = reflectStat ?? 'exceptName';
 
   // Get file stats to extract metadata
+  signal?.throwIfAborted();
   const stats = await stat(filePath);
   // Create readable stream from file
   const reader = createReadStream(filePath, { signal });
@@ -272,14 +281,9 @@ export const createReadFileItem = async (
  * @param signal - Optional abort signal to cancel the operation
  * @returns A promise that resolves when the stream is finished
  */
-export const storeReaderToFile = (reader: Readable, path: string, signal?: AbortSignal) => {
+export const storeReaderToFile = async (reader: Readable, path: string, signal?: AbortSignal) => {
   const writer = createWriteStream(path, { signal });
-  reader.pipe(writer);
-  return new Promise<void>((res, rej) => {
-    writer.on('finish', res);
-    writer.on('error', rej);
-    reader.on('error', rej);
-  });
+  await pipeline(reader, writer, { signal });
 };
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -306,13 +310,14 @@ export const createEntryItemGenerator = async function* (
     const fsPath = join(baseDir, relativePath);
     
     try {
+      signal?.throwIfAborted();
       const stats = await stat(fsPath);
       
       if (stats.isDirectory()) {
         // Create directory entry
         yield await createDirectoryItem(relativePath, rs, {
           directoryPath: fsPath
-        });
+        }, signal);
       } else if (stats.isFile()) {
         // Create file entry
         yield await createReadFileItem(relativePath, fsPath, rs, undefined, signal);
@@ -345,6 +350,7 @@ export const extractTo = async (
     if (entry.kind === 'directory') {
       // Create directory
       try {
+        signal?.throwIfAborted();
         await mkdir(targetPath, { recursive: true, mode: entry.mode });
       } catch (error) {
         // Directory might already exist, which is fine
@@ -355,6 +361,7 @@ export const extractTo = async (
     } else if (entry.kind === 'file') {
       // Create parent directories if they don't exist
       const parentDir = dirname(targetPath);
+      signal?.throwIfAborted();
       await mkdir(parentDir, { recursive: true });
       
       // Extract file content and write to filesystem

@@ -167,11 +167,15 @@ const parseTarHeader = (buffer: Buffer): EntryItemInfo | undefined => {
 /**
  * Create a buffered async iterator that allows returning data
  */
-const createBufferedAsyncIterator = (iterable: AsyncIterable<string | Buffer>): AsyncIterator<string | Buffer> => {
+const createBufferedAsyncIterator = (
+  iterable: AsyncIterable<string | Buffer>,
+  signal: AbortSignal | undefined
+): AsyncIterator<string | Buffer> => {
   const buffer: (string | Buffer)[] = [];
   const iterator = iterable[Symbol.asyncIterator]();
   return {
     next: async () => {
+      signal?.throwIfAborted();
       if (buffer.length > 0) {
         return { value: buffer.shift()!, done: false };
       }
@@ -251,7 +255,7 @@ const createReadableFromIterator = (
     consumedRef.consumed = true;
   };
 
-  return Readable.from(generator());
+  return Readable.from(generator(), { signal });
 };
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -285,7 +289,7 @@ export const createTarExtractor = async function* (
   }
 
   // Get async iterator from the stream
-  const iterator = createBufferedAsyncIterator(inputStream);
+  const iterator = createBufferedAsyncIterator(inputStream, signal);
 
   // Last entry item
   let header: EntryItemInfo | undefined;

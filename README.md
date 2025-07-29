@@ -426,7 +426,7 @@ import { createTarExtractor, extractTo } from 'tar-vern';
 // Extract tar archive to directory
 const stream = createReadStream('archive.tar');
 const extractor = createTarExtractor(stream);
-await extractTo('/path/to/destination', extractor);
+await extractTo(extractor, '/path/to/destination');
 ```
 
 ## Abort signal support

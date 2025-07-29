@@ -278,14 +278,14 @@ export const createTarPacker = (
     // No compression
     case 'none': {
       // Create readable stream from entry item iterator
-      return Readable.from(entryItemIterator());
+      return Readable.from(entryItemIterator(), { signal });
     }
     // Gzip compression
     case 'gzip': {
       // Create gzip stream
       const gzipStream = createGzip({ level: 9 });
       // Create readable stream from entry item iterator
-      const entryItemStream = Readable.from(entryItemIterator());
+      const entryItemStream = Readable.from(entryItemIterator(), { signal });
       // Pipe the entry item stream to the gzip stream
       entryItemStream.pipe(gzipStream);
       // Return the gzip stream
