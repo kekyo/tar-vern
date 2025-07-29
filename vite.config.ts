@@ -9,9 +9,7 @@ export default defineConfig({
     dts({
       insertTypesEntry: true
     }),
-    screwUp({
-      outputMetadataFile: true
-    })
+    screwUp()
   ],
   build: {
     lib: {
@@ -21,7 +19,7 @@ export default defineConfig({
       formats: ['es', 'cjs']
     },
     rollupOptions: {
-      external: ['stream', 'fs', 'fs/promises', 'child_process', 'path', 'os', 'zlib']
+      external: ['stream', 'fs', 'fs/promises', 'stream/promises', 'child_process', 'path', 'os', 'zlib']
     },
     sourcemap: true,
     minify: false

@@ -5,8 +5,8 @@
 
 import { Readable } from "stream";
 import { createGzip } from "zlib";
-import { getBuffer } from "./utils";
-import { CompressionTypes, EntryItem } from "./types";
+import { getBuffer, MAX_NAME, MAX_PREFIX } from "./utils";
+import { CompressionTypes, EntryItem, EntryItemContent } from "./types";
 
 /**
  * Get the byte length of a string in UTF-8
@@ -36,10 +36,6 @@ const truncateUtf8Safe = (str: string, maxBytes: number) => {
   }
   return str.slice(0, i);
 }
-
-// Tar specification: name max 100 bytes, prefix max 155 bytes
-const MAX_NAME = 100;
-const MAX_PREFIX = 155;
 
 /**
  * Split a path into a name and a prefix
@@ -205,11 +201,14 @@ export const createTarPacker = (
             const totalPaddedContentBytes = getPaddedBytes(contentBytes);
             yield totalPaddedContentBytes;
           } else {
+            // Assert that this is EntryItemContent, not FileItemReader (packer doesn't handle FileItemReader)
+            const content = entryItemContent as EntryItemContent;
+            
             // Create and produce tar header bytes
             const tarHeaderBytes = createTarHeader(
               'file',
               entryItem.path,
-              entryItemContent.length,
+              content.length,
               entryItem.mode,
               entryItem.uname,
               entryItem.gname,
@@ -219,10 +218,10 @@ export const createTarPacker = (
             yield tarHeaderBytes;
 
             let position = 0;
-            switch (entryItemContent.kind) {
+            switch (content.kind) {
               // Content is a generator
               case 'generator': {
-                for await (const contentBytes of entryItemContent.generator) {
+                for await (const contentBytes of content.generator) {
                   signal?.throwIfAborted();
                   yield contentBytes;
                   position += contentBytes.length;
@@ -231,9 +230,9 @@ export const createTarPacker = (
               }
               // Content is a readable stream
               case 'readable': {
-                for await (const content of entryItemContent.readable) {
+                for await (const chunk of content.readable) {
                   signal?.throwIfAborted();
-                  const contentBytes = getBuffer(content);
+                  const contentBytes = getBuffer(chunk);
                   yield contentBytes;
                   position += contentBytes.length;
                 }
@@ -279,14 +278,14 @@ export const createTarPacker = (
     // No compression
     case 'none': {
       // Create readable stream from entry item iterator
-      return Readable.from(entryItemIterator());
+      return Readable.from(entryItemIterator(), { signal });
     }
     // Gzip compression
     case 'gzip': {
       // Create gzip stream
       const gzipStream = createGzip({ level: 9 });
       // Create readable stream from entry item iterator
-      const entryItemStream = Readable.from(entryItemIterator());
+      const entryItemStream = Readable.from(entryItemIterator(), { signal });
       // Pipe the entry item stream to the gzip stream
       entryItemStream.pipe(gzipStream);
       // Return the gzip stream

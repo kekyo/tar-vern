@@ -80,6 +80,8 @@ export interface EntryItemBase {
   readonly date: Date;
 }
 
+///////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Interface for all file entry items
  */
@@ -102,6 +104,36 @@ export interface DirectoryItem extends EntryItemBase {
  * Union type for all entry items
  */
 export type EntryItem = FileItem | DirectoryItem;
+
+///////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Interface for extracted all file entry items
+ */
+export interface ExtractedFileItem extends EntryItemBase {
+  readonly kind: 'file';
+  /**
+   * Get the file content as string, buffer, or readable stream
+   * @param type - The type of data to retrieve ('string', 'buffer', or 'readable')
+   * @returns The file content as string, buffer, or readable stream
+   */
+  getContent(type: 'string'): Promise<string>;
+  getContent(type: 'buffer'): Promise<Buffer>;
+  getContent(type: 'readable'): Promise<Readable>;
+  getContent(type: 'string' | 'buffer' | 'readable'): Promise<string | Buffer | Readable>;
+}
+
+/**
+ * Interface for extracted all directory entry items
+ */
+export interface ExtractedDirectoryItem extends EntryItemBase {
+  readonly kind: 'directory';
+}
+
+/**
+ * Union type for extracted all entry items
+ */
+export type ExtractedEntryItem = ExtractedFileItem | ExtractedDirectoryItem;
 
 ///////////////////////////////////////////////////////////////////////////////////
 

@@ -5,4 +5,14 @@
 
 export type * from './types';
 export * from './packer';
-export * from './utils';
+export * from './extractor';
+export {
+  createDirectoryItem,
+  createFileItem,
+  createReadableFileItem,
+  createGeneratorFileItem,
+  createReadFileItem,
+  storeReaderToFile,
+  createEntryItemGenerator,
+  extractTo
+} from './utils';

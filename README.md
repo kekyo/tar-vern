@@ -2,7 +2,7 @@
 
 Streaming tape archiver (tar) library for TypeScript/JavaScript.
 
-[![Project Status: WIP – Initial development is in progress, but there has not yet been a stable, usable release suitable for the public.](https://www.repostatus.org/badges/latest/wip.svg)](https://www.repostatus.org/#wip)
+[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm version](https://img.shields.io/npm/v/tar-vern.svg)](https://www.npmjs.com/package/tar-vern)
 
@@ -10,18 +10,29 @@ Streaming tape archiver (tar) library for TypeScript/JavaScript.
 
 ## What is this?
 
-A modern TypeScript library for creating tape archives (tar/ustar format) using streaming API. Supports both files and directories with metadata preservation, GZip compression, readable streaming, and flexible content sources.
-
-```mermaid
-graph LR
-  A[Content Items<br/>* Files<br/>* Directories<br/>* String content<br/>* Buffer content<br/>* Async generators] -->|Stream pipe| B[Writer Stream<br/>'createWriteStream']
-  B --> C[TAR File<br/>'foobar.tar']
-```
+A modern TypeScript library for creating and extracting tape archives (tar/ustar format) using streaming API. Supports both files and directories with metadata preservation, GZip compression, readable streaming, and flexible content sources.
 
 ## Packing minimum example
 
 tar-vern supplies file and directory information to pack through "TypeScript async generator."
 This allows you to specify pack data with very concise code.
+
+```mermaid
+graph LR
+  subgraph A["Async generator"]
+    A2[Directory item]
+    A3[String content]
+    A4[Buffer content]
+    A5[Async generators]
+  end
+  
+  A2 --> B[TarPacker]
+  A3 --> B
+  A4 --> B
+  A5 --> B
+  
+  B --> C[TAR File<br/>'foobar.tar']
+```
 
 ```typescript
 import {
@@ -42,18 +53,63 @@ const itemGenerator = async function*() {
   // (Make your own entries with yield expression...)
 };
 
-// Create tar stream and write to file
-const packer = createTarPacker(itemGenerator());
+// Create GZipped tar stream and write to file
+const packer = createTarPacker(itemGenerator(), 'gzip');
 await storeReaderToFile(packer, 'archive.tar.gz');   // Use helper to awaitable
+```
+
+### Extracting minimum example
+
+tar-vern provides tar extraction through async generator, allowing you to process entries as they are extracted from the tar archive.
+
+```mermaid
+graph LR
+  A[TAR File<br/>'foobar.tar'] --> B[TarExtractor]
+  
+  subgraph C["Async generator iteration"]
+    C1[Directory item]
+    C2[String content]
+    C3[Buffer content]
+    C4[Readable stream]
+  end
+  
+  B --> C1
+  B --> C2
+  B --> C3
+  B --> C4
+```
+
+```typescript
+import { createReadStream } from 'fs';
+import { createTarExtractor } from 'tar-vern';
+
+// Read GZipped tar file and extract entries
+const stream = createReadStream('archive.tar.gz');
+
+for await (const extractedItem of createTarExtractor(stream)) {
+  if (extractedItem.kind === 'file') {
+    console.log(`File: ${extractedItem.path}`);
+    
+    // Get content as string, buffer, or readable stream
+    const content = await extractedItem.getContent('string');
+    console.log(`Content: ${content}`);
+  } else {
+    console.log(`Directory: ${extractedItem.path}`);
+  }
+}
 ```
 
 ## Features
 
-- Streaming API: Memory-efficient processing of large files
+- Bidirectional streaming: Both creation and extraction of tar archives
+- Memory-efficient: Streaming API for processing large files without buffering
 - Multiple content sources: String, Buffer, ReadableStream, file paths and async generators
 - Metadata preservation: File permissions, ownership, timestamps
-- Built-in compression: GZip compression support (`tar.gz` format)
-- No external dependencies.
+- Built-in compression/decompression: GZip compression support (`tar.gz` format)
+- Flexible content access: Extract files as string, Buffer, or Readable stream on demand
+- Error handling: Comprehensive validation and error reporting
+- Abort signal support: Cancellable operations
+- No external dependencies: Pure TypeScript implementation
 
 ----
 
@@ -115,6 +171,8 @@ Helper functions are provided to simplify the construction of `EntryItem` object
 |`createReadableFileItem()`|Construct file item from readable stream (`stream.Readable`)|
 |`createGeneratorFileItem()`|Construct file item from async generator|
 |`createReadFileItem()`|Construct file item from a file on real filesystem|
+|`createEntryItemGenerator()`|Create async generator from filesystem paths|
+|`extractTo()`|Extract tar entries to filesystem directory|
 
 For example:
 
@@ -201,9 +259,196 @@ await storeReaderToFile(packer, 'archive.tar');
 
 ----
 
-## Usage for tar unpacking
+## Usage for tar extracting
 
-TODO:
+### ExtractedEntryItem basis
+
+The extractor yields `ExtractedEntryItem` objects that represent files and directories in the tar archive. For files, you can access the content using the `getContent()` method:
+
+```typescript
+// Process each extracted entry
+for await (const item of createTarExtractor(stream)) {
+  console.log(`${item.kind}: ${item.path}`);
+  console.log(`Mode: ${item.mode.toString(8)}`);
+  console.log(`Owner: ${item.uname}:${item.gname} (${item.uid}:${item.gid})`);
+  console.log(`Date: ${item.date}`);
+  
+  if (item.kind === 'file') {
+    // Get content as string
+    const textContent = await item.getContent('string');
+    
+    // Or get content as Buffer
+    const binaryContent = await item.getContent('buffer');
+    
+    // Or get content as Readable stream
+    const streamContent = await item.getContent('readable');
+    // Process stream: for await (const chunk of streamContent) { ... }
+  }
+}
+```
+
+### Important notes about `getContent()`
+
+The `getContent()` method has several important limitations due to the streaming nature of the tar extraction:
+
+#### Single use only
+
+`getContent()` can only be called ONCE PER FILE entry. Attempting to call it multiple times will throw an error:
+
+```typescript
+const content1 = await item.getContent('string'); // OK
+const content2 = await item.getContent('buffer'); // Error! Already consumed
+```
+
+#### Sequential processing required
+
+`getContent()` must be called BEFORE the iterator moves to the next entry. Once you call `next()` on the iterator or continue the `for await` loop, previous file entries become inaccessible:
+
+```typescript
+const entries = [];
+for await (const item of createTarExtractor(stream)) {
+  entries.push(item); // Storing for later processing
+}
+  
+// This will fail - content already skipped during iteration
+const content = await entries[0].getContent('string'); // Error!
+```
+
+#### Memory vs streaming trade-offs
+
+- `'string'` and `'buffer'` types: Load the entire file content into memory at once
+- `'readable'` type: Provides true streaming access for memory-efficient processing of large files
+
+```typescript
+if (item.kind === 'file') {
+  // For small files - loads entire content into memory
+  const text = await item.getContent('string');
+
+  // For large files - stream processing (memory efficient)
+  const readableContentStream = await item.getContent('readable');
+  for await (const chunk of readableContentStream) {
+    // Process chunk by chunk without loading entire file
+  }
+}
+```
+
+For true streaming extraction, process each file immediately as it's yielded:
+
+```typescript
+for await (const item of createTarExtractor(stream)) {
+  if (item.kind === 'file') {
+    // Process immediately - don't store the item for later using
+    const content = await item.getContent('readable');
+    // Handle content...
+  }
+}
+```
+
+### With GZip decompression
+
+Support for gzip-compressed tar files (`.tar.gz` or `.tgz`):
+
+```typescript
+import { createReadStream } from 'fs';
+import { createTarExtractor } from 'tar-vern';
+
+// Extract from compressed tar file
+const stream = createReadStream('archive.tar.gz');
+
+for await (const item of createTarExtractor(stream, 'gzip')) {
+  console.log(`Extracted: ${item.path}`);
+  
+  if (item.kind === 'file') {
+    // For large files, use readable stream to avoid memory issues
+    const stream = await item.getContent('readable');
+    
+    // Process content incrementally
+    for await (const chunk of stream) {
+      // Process each chunk without loading entire file into memory
+      console.log(`Processing chunk of ${chunk.length} bytes`);
+    }
+  }
+}
+```
+
+### Error handling
+
+The extractor validates tar format and throws appropriate errors:
+
+```typescript
+try {
+  for await (const item of createTarExtractor(stream)) {
+    // Process items...
+  }
+} catch (error) {
+  if (error.message.includes('Invalid tar format')) {
+    console.error('Not a valid tar file');
+  } else if (error.message.includes('Invalid checksum')) {
+    console.error('Corrupted tar file');
+  } else {
+    console.error('Extraction error:', error.message);
+  }
+}
+```
+
+----
+
+## Common workflow helper functions
+
+For common workflows, additional helper functions are available:
+
+### createEntryItemGenerator()
+
+Creates an async generator from filesystem paths, designed to pack with glob patterns:
+
+```typescript
+import { glob } from 'glob';
+import { createEntryItemGenerator, createTarPacker, storeReaderToFile } from 'tar-vern';
+
+// Find files using glob patterns
+const baseDir = '/path/to/source';
+const files = await glob('**/*.{js,ts,json}', { cwd: baseDir });
+
+// Create tar from glob results
+const generator = createEntryItemGenerator(baseDir, files);
+const packer = createTarPacker(generator);
+await storeReaderToFile(packer, 'archive.tar');
+```
+
+### extractTo()
+
+Extracts tar entries directly to a filesystem directory:
+
+```typescript
+import { createReadStream } from 'fs';
+import { createTarExtractor, extractTo } from 'tar-vern';
+
+// Extract tar archive to directory
+const stream = createReadStream('archive.tar');
+const extractor = createTarExtractor(stream);
+await extractTo(extractor, '/path/to/destination');
+```
+
+## Abort signal support
+
+You can cancel extraction using AbortSignal:
+
+```typescript
+const controller = new AbortController();
+
+// Cancel after 5 seconds
+setTimeout(() => controller.abort(), 5000);
+
+try {
+  for await (const item of createTarExtractor(stream, 'none', controller.signal)) {
+    // Process items...
+  }
+} catch (error) {
+  if (error.name === 'AbortError') {
+    console.log('Extraction cancelled');
+  }
+}
+```
 
 ----
 
