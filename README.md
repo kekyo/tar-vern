@@ -285,6 +285,63 @@ for await (const item of createTarExtractor(stream)) {
 }
 ```
 
+### Important notes about `getContent()`
+
+The `getContent()` method has several important limitations due to the streaming nature of the tar extraction:
+
+#### Single use only
+
+`getContent()` can only be called ONCE PER FILE entry. Attempting to call it multiple times will throw an error:
+
+```typescript
+const content1 = await item.getContent('string'); // OK
+const content2 = await item.getContent('buffer'); // Error! Already consumed
+```
+
+#### Sequential processing required
+
+`getContent()` must be called BEFORE the iterator moves to the next entry. Once you call `next()` on the iterator or continue the `for await` loop, previous file entries become inaccessible:
+
+```typescript
+const entries = [];
+for await (const item of createTarExtractor(stream)) {
+  entries.push(item); // Storing for later processing
+}
+  
+// This will fail - content already skipped during iteration
+const content = await entries[0].getContent('string'); // Error!
+```
+
+#### Memory vs streaming trade-offs
+
+- `'string'` and `'buffer'` types: Load the entire file content into memory at once
+- `'readable'` type: Provides true streaming access for memory-efficient processing of large files
+
+```typescript
+if (item.kind === 'file') {
+  // For small files - loads entire content into memory
+  const text = await item.getContent('string');
+
+  // For large files - stream processing (memory efficient)
+  const readableContentStream = await item.getContent('readable');
+  for await (const chunk of readableContentStream) {
+    // Process chunk by chunk without loading entire file
+  }
+}
+```
+
+For true streaming extraction, process each file immediately as it's yielded:
+
+```typescript
+for await (const item of createTarExtractor(stream)) {
+  if (item.kind === 'file') {
+    // Process immediately - don't store the item for later using
+    const content = await item.getContent('readable');
+    // Handle content...
+  }
+}
+```
+
 ### With GZip decompression
 
 Support for gzip-compressed tar files (`.tar.gz` or `.tgz`):
