@@ -171,6 +171,8 @@ Helper functions are provided to simplify the construction of `EntryItem` object
 |`createReadableFileItem()`|Construct file item from readable stream (`stream.Readable`)|
 |`createGeneratorFileItem()`|Construct file item from async generator|
 |`createReadFileItem()`|Construct file item from a file on real filesystem|
+|`createEntryItemGenerator()`|Create async generator from filesystem paths|
+|`extractTo()`|Extract tar entries to filesystem directory|
 
 For example:
 
@@ -390,6 +392,42 @@ try {
 ```
 
 ----
+
+## Common workflow helper functions
+
+For common workflows, additional helper functions are available:
+
+### createEntryItemGenerator()
+
+Creates an async generator from filesystem paths, designed to pack with glob patterns:
+
+```typescript
+import { glob } from 'glob';
+import { createEntryItemGenerator, createTarPacker, storeReaderToFile } from 'tar-vern';
+
+// Find files using glob patterns
+const baseDir = '/path/to/source';
+const files = await glob('**/*.{js,ts,json}', { cwd: baseDir });
+
+// Create tar from glob results
+const generator = createEntryItemGenerator(baseDir, files);
+const packer = createTarPacker(generator);
+await storeReaderToFile(packer, 'archive.tar');
+```
+
+### extractTo()
+
+Extracts tar entries directly to a filesystem directory:
+
+```typescript
+import { createReadStream } from 'fs';
+import { createTarExtractor, extractTo } from 'tar-vern';
+
+// Extract tar archive to directory
+const stream = createReadStream('archive.tar');
+const extractor = createTarExtractor(stream);
+await extractTo('/path/to/destination', extractor);
+```
 
 ## Abort signal support
 

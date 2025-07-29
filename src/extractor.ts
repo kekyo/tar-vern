@@ -254,6 +254,8 @@ const createReadableFromIterator = (
   return Readable.from(generator());
 };
 
+///////////////////////////////////////////////////////////////////////////////////
+
 /**
  * Create a tar extractor
  * @param readable - The readable stream containing tar data

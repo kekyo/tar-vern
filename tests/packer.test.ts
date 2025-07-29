@@ -1,20 +1,22 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { Readable } from 'stream';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createWriteStream, mkdirSync, mkdtempSync, readFileSync, writeFileSync, statSync, chmodSync } from 'fs';
+import { createWriteStream, mkdirSync, readFileSync, writeFileSync, statSync, chmodSync } from 'fs';
 import { spawn } from 'child_process';
 import { createGzip } from 'zlib';
+import dayjs from 'dayjs';
 import { createTarPacker } from '../src/packer';
 import { CompressionTypes, EntryItem } from '../src/types';
 import { createReadableFileItem, createReadFileItem, createDirectoryItem, storeReaderToFile } from '../src/utils';
 
 describe('Tar packer test', () => {
-  const testBaseDir = mkdtempSync(join(tmpdir(), 'tar-vern-'));
+  const tempBaseDir = join(tmpdir(), 'tar-vern-test', 'packer', dayjs().format('YYYYMMDD_HHmmssSSS'));
+
   let testDir: string;
 
-  beforeAll(fn => {
-    testDir = join(testBaseDir, fn.name);
+  beforeEach(fn => {
+    testDir = join(tempBaseDir, fn.task.name);
     mkdirSync(testDir, { recursive: true });
   });
 

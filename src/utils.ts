@@ -4,9 +4,10 @@
 // https://github.com/kekyo/tar-vern/
 
 import { createReadStream, createWriteStream } from "fs";
-import { stat } from "fs/promises";
+import { stat, mkdir, writeFile } from "fs/promises";
 import { Readable } from "stream";
-import { CreateItemOptions, CreateReadableFileItemOptions, FileItem, DirectoryItem, ReflectStats, CreateDirectoryItemOptions } from "./types";
+import { dirname, join } from "path";
+import { CreateItemOptions, CreateReadableFileItemOptions, FileItem, DirectoryItem, ReflectStats, CreateDirectoryItemOptions, EntryItem, ExtractedEntryItem, ExtractedFileItem } from "./types";
 
 // Tar specification: name max 100 bytes, prefix max 155 bytes
 export const MAX_NAME = 100;
@@ -31,6 +32,8 @@ const getUName = (candidateName: string | undefined, candidateId: number, reflec
 export const getBuffer = (data: Buffer | string) => {
   return Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8');
 }
+
+///////////////////////////////////////////////////////////////////////////////////
 
 /**
  * Create a DirectoryItem
@@ -106,12 +109,14 @@ export const createFileItem = async (
  * @param path - The path to the file in the tar archive
  * @param readable - The readable stream
  * @param options - Metadata for the file including path in tar archive
+ * @param signal - Optional abort signal to cancel the operation
  * @returns A FileItem
  */
 export const createReadableFileItem = async (
   path: string,
   readable: Readable,
-  options?: CreateReadableFileItemOptions
+  options?: CreateReadableFileItemOptions,
+  signal?: AbortSignal
 ): Promise<FileItem> => {
   const mode = options?.mode ?? 0o644;
   const uid = options?.uid ?? 0;
@@ -130,6 +135,7 @@ export const createReadableFileItem = async (
 
     // Collect all chunks to calculate size
     for await (const chunk of readable) {
+      signal?.throwIfAborted();
       const buffer = getBuffer(chunk);
       chunks.push(buffer);
       length += buffer.length;
@@ -142,7 +148,7 @@ export const createReadableFileItem = async (
       content: {
         kind: 'readable',
         length,
-        readable: Readable.from(chunks)
+        readable: Readable.from(chunks, { signal })
       }
     };
   } else {
@@ -164,12 +170,14 @@ export const createReadableFileItem = async (
  * @param path - The path to the file in the tar archive
  * @param generator - The generator to read the file from
  * @param options - Metadata for the file including path in tar archive
+ * @param signal - Optional abort signal to cancel the operation
  * @returns A FileItem
  */
 export const createGeneratorFileItem = async (
   path: string,
   generator: AsyncGenerator<Buffer, void, unknown>,
-  options?: CreateReadableFileItemOptions
+  options?: CreateReadableFileItemOptions,
+  signal?: AbortSignal
 ): Promise<FileItem> => {
   const mode = options?.mode ?? 0o644;
   const uid = options?.uid ?? 0;
@@ -188,6 +196,7 @@ export const createGeneratorFileItem = async (
 
     // Collect all chunks to calculate size
     for await (const chunk of generator) {
+      signal?.throwIfAborted();
       const buffer = getBuffer(chunk);
       chunks.push(buffer);
       length += buffer.length;
@@ -200,7 +209,7 @@ export const createGeneratorFileItem = async (
       content: {
         kind: 'readable',
         length,
-        readable: Readable.from(chunks)
+        readable: Readable.from(chunks, { signal })
       }
     };
   } else {
@@ -223,20 +232,22 @@ export const createGeneratorFileItem = async (
  * @param filePath - The path to the file to read from real filesystem
  * @param reflectStat - Whether to reflect optional stat of the file (mode, uid, gid, mtime. Default: 'exceptName')
  * @param options - Metadata for the file including path in tar archive
+ * @param signal - Optional abort signal to cancel the operation
  * @returns A FileItem
  */
 export const createReadFileItem = async (
   path: string,
   filePath: string,
   reflectStat?: ReflectStats,
-  options?: CreateItemOptions
+  options?: CreateItemOptions,
+  signal?: AbortSignal
 ): Promise<FileItem> => {
   const rs = reflectStat ?? 'exceptName';
 
   // Get file stats to extract metadata
   const stats = await stat(filePath);
   // Create readable stream from file
-  const reader = createReadStream(filePath);
+  const reader = createReadStream(filePath, { signal });
 
   const mode = options?.mode ?? (rs !== 'none' ? stats.mode : undefined);
   const uid = options?.uid ?? (rs !== 'none' ? stats.uid : undefined);
@@ -249,21 +260,107 @@ export const createReadFileItem = async (
   // Create a FileItem
   return await createReadableFileItem(path, reader, {
     length: stats.size, mode, uname, gname, uid, gid, date,
-  });
+  }, signal);
 };
+
+///////////////////////////////////////////////////////////////////////////////////
 
 /**
  * Store a readable stream to a file
  * @param reader - The readable stream
  * @param path - The path to the file to store the readable stream to
+ * @param signal - Optional abort signal to cancel the operation
  * @returns A promise that resolves when the stream is finished
  */
-export const storeReaderToFile = (reader: Readable, path: string) => {
-  const writer = createWriteStream(path);
+export const storeReaderToFile = (reader: Readable, path: string, signal?: AbortSignal) => {
+  const writer = createWriteStream(path, { signal });
   reader.pipe(writer);
   return new Promise<void>((res, rej) => {
     writer.on('finish', res);
     writer.on('error', rej);
     reader.on('error', rej);
   });
+};
+
+///////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Create an async generator that yields EntryItem objects from filesystem paths
+ * @param baseDir - Base directory path for resolving relative paths
+ * @param relativePaths - Array of relative paths to include in the tar archive
+ * @param reflectStat - Whether to reflect file stats (Default: 'exceptName')
+ * @param signal - Optional abort signal to cancel the operation
+ * @returns Async generator that yields EntryItem objects
+ */
+export const createEntryItemGenerator = async function* (
+  baseDir: string,
+  relativePaths: string[],
+  reflectStat?: ReflectStats,
+  signal?: AbortSignal
+): AsyncGenerator<EntryItem, void, unknown> {
+  const rs = reflectStat ?? 'exceptName';
+  
+  for (const relativePath of relativePaths) {
+    signal?.throwIfAborted();
+    
+    const fsPath = join(baseDir, relativePath);
+    
+    try {
+      const stats = await stat(fsPath);
+      
+      if (stats.isDirectory()) {
+        // Create directory entry
+        yield await createDirectoryItem(relativePath, rs, {
+          directoryPath: fsPath
+        });
+      } else if (stats.isFile()) {
+        // Create file entry
+        yield await createReadFileItem(relativePath, fsPath, rs, undefined, signal);
+      }
+    } catch (error) {
+      // Skip files that can't be accessed (permissions, etc.)
+      console.warn(`Warning: Could not access ${fsPath}:`, error);
+      continue;
+    }
+  }
+};
+
+/**
+ * Extract entries from a tar extractor to a directory on the filesystem
+ * @param iterator - Async generator of extracted entry items
+ * @param basePath - Base directory path where entries will be extracted
+ * @param signal - Optional abort signal to cancel the operation
+ * @returns Promise that resolves when extraction is complete
+ */
+export const extractTo = async (
+  iterator: AsyncGenerator<ExtractedEntryItem, void, unknown>,
+  basePath: string,
+  signal?: AbortSignal
+): Promise<void> => {
+  for await (const entry of iterator) {
+    signal?.throwIfAborted();
+    
+    const targetPath = join(basePath, entry.path);
+    
+    if (entry.kind === 'directory') {
+      // Create directory
+      try {
+        await mkdir(targetPath, { recursive: true, mode: entry.mode });
+      } catch (error) {
+        // Directory might already exist, which is fine
+        if ((error as any).code !== 'EEXIST') {
+          throw error;
+        }
+      }
+    } else if (entry.kind === 'file') {
+      // Create parent directories if they don't exist
+      const parentDir = dirname(targetPath);
+      await mkdir(parentDir, { recursive: true });
+      
+      // Extract file content and write to filesystem
+      const fileEntry = entry as ExtractedFileItem;
+      const content = await fileEntry.getContent('buffer');
+      await writeFile(targetPath, content, { mode: entry.mode, signal });
+    }
+  }
 };

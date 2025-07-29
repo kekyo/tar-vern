@@ -1,17 +1,19 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createReadStream, mkdirSync, mkdtempSync, readFileSync, writeFileSync, chmodSync } from 'fs';
+import { createReadStream, mkdirSync, readFileSync, writeFileSync, chmodSync } from 'fs';
 import { spawn } from 'child_process';
+import dayjs from 'dayjs';
 import { createTarExtractor } from '../src/extractor';
 import { CompressionTypes, ExtractedEntryItem, ExtractedFileItem } from '../src/types';
 
 describe('Tar extractor test', () => {
-  const testBaseDir = mkdtempSync(join(tmpdir(), 'tar-vern-extractor-'));
+  const tempBaseDir = join(tmpdir(), 'tar-vern-test', 'extractor', dayjs().format('YYYYMMDD_HHmmssSSS'));
+
   let testDir: string;
 
-  beforeAll(fn => {
-    testDir = join(testBaseDir, fn.name);
+  beforeEach(fn => {
+    testDir = join(tempBaseDir, fn.task.name);
     mkdirSync(testDir, { recursive: true });
   });
 
