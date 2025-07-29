@@ -6,4 +6,13 @@
 export type * from './types';
 export * from './packer';
 export * from './extractor';
-export * from './utils';
+export {
+  createDirectoryItem,
+  createFileItem,
+  createReadableFileItem,
+  createGeneratorFileItem,
+  createReadFileItem,
+  storeReaderToFile,
+  createEntryItemGenerator,
+  extractTo
+} from './utils';
