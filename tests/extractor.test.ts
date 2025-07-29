@@ -1,3 +1,8 @@
+// tar-vern - Tape archiver library for Typescript
+// Copyright (c) Kouji Matsui (@kekyo@mi.kekyo.net)
+// Under MIT.
+// https://github.com/kekyo/tar-vern/
+
 import { describe, it, expect, beforeEach } from 'vitest';
 import { tmpdir } from 'os';
 import { join } from 'path';
