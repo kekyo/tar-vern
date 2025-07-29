@@ -4,7 +4,7 @@
 // https://github.com/kekyo/tar-vern/
 
 import { createReadStream, createWriteStream } from "fs";
-import { stat, mkdir, writeFile } from "fs/promises";
+import { stat, mkdir, writeFile, readdir } from "fs/promises";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { dirname, join } from "path";
@@ -289,22 +289,75 @@ export const storeReaderToFile = async (reader: Readable, path: string, signal?:
 ///////////////////////////////////////////////////////////////////////////////////
 
 /**
+ * Recursively collect all files and directories in a directory
+ * @param baseDir - The base directory to collect files from
+ * @param signal - Optional abort signal to cancel the operation
+ * @returns Array of relative paths
+ */
+const getAllFilesInDirectory = async (
+  baseDir: string, signal: AbortSignal | undefined): Promise<string[]> => {
+  
+  const collectFiles = async (currentDir: string, relativePath: string): Promise<string[]> => {
+    signal?.throwIfAborted();
+    
+    try {
+      const entries = await readdir(currentDir, { withFileTypes: true });
+      const result: string[] = [];
+      
+      // Process all entries in parallel and collect their results
+      const tasks = entries.map(async (entry) => {
+        signal?.throwIfAborted();
+        
+        const entryRelativePath = join(relativePath, entry.name);
+        
+        if (entry.isDirectory()) {
+          const entryFullPath = join(currentDir, entry.name);
+          // First add the directory itself, then its contents
+          const directoryContents = await collectFiles(entryFullPath, entryRelativePath);
+          return [entryRelativePath, ...directoryContents];
+        } else {
+          // For files, just return the file path
+          return [entryRelativePath];
+        }
+      });
+      
+      const allResults = await Promise.all(tasks);
+      
+      // Flatten and combine all results while maintaining order
+      for (const entryResults of allResults) {
+        result.push(...entryResults);
+      }
+      
+      return result;
+    } catch (error) {
+      console.warn(`Warning: Could not read directory ${currentDir}:`, error);
+      return [];
+    }
+  };
+  
+  return await collectFiles(baseDir, '');
+};
+
+/**
  * Create an async generator that yields EntryItem objects from filesystem paths
  * @param baseDir - Base directory path for resolving relative paths
- * @param relativePaths - Array of relative paths to include in the tar archive
+ * @param relativePaths - Array of relative paths to include in the tar archive (optional)
  * @param reflectStat - Whether to reflect file stats (Default: 'exceptName')
  * @param signal - Optional abort signal to cancel the operation
  * @returns Async generator that yields EntryItem objects
  */
 export const createEntryItemGenerator = async function* (
   baseDir: string,
-  relativePaths: string[],
+  relativePaths?: string[],
   reflectStat?: ReflectStats,
   signal?: AbortSignal
 ): AsyncGenerator<EntryItem, void, unknown> {
   const rs = reflectStat ?? 'exceptName';
   
-  for (const relativePath of relativePaths) {
+  // If relativePaths is not provided, collect all files in baseDir
+  const pathsToProcess = relativePaths ?? await getAllFilesInDirectory(baseDir, signal);
+  
+  for (const relativePath of pathsToProcess) {
     signal?.throwIfAborted();
     
     const fsPath = join(baseDir, relativePath);

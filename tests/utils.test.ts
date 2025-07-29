@@ -100,6 +100,50 @@ describe('Helper functions test', () => {
       expect(fileEntry.gid).toBe(stats.gid);
     });
 
+    it('should collect all files when relativePaths is omitted', async () => {
+      // Create test directory structure
+      const sourceDir = join(testDir, 'auto-collect');
+      mkdirSync(sourceDir, { recursive: true });
+      
+      writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
+      writeFileSync(join(sourceDir, 'file2.txt'), 'Content 2');
+      
+      const subDir = join(sourceDir, 'subdir');
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(join(subDir, 'file3.txt'), 'Content 3');
+      
+      const nestedDir = join(subDir, 'nested');
+      mkdirSync(nestedDir, { recursive: true });
+      writeFileSync(join(nestedDir, 'file4.txt'), 'Content 4');
+
+      // Test createEntryItemGenerator without relativePaths
+      const entries: EntryItem[] = [];
+      for await (const entry of createEntryItemGenerator(sourceDir)) {
+        entries.push(entry);
+      }
+
+      // Should collect all files and directories recursively
+      expect(entries.length).toBeGreaterThan(0);
+      
+      // Verify we got all expected entries
+      const paths = entries.map(e => e.path).sort();
+      expect(paths).toContain('file1.txt');
+      expect(paths).toContain('file2.txt');
+      expect(paths).toContain('subdir');
+      expect(paths).toContain(join('subdir', 'file3.txt'));
+      expect(paths).toContain(join('subdir', 'nested'));
+      expect(paths).toContain(join('subdir', 'nested', 'file4.txt'));
+
+      // Verify entry types
+      const file1 = entries.find(e => e.path === 'file1.txt');
+      const dir = entries.find(e => e.path === 'subdir');
+      const nestedFile = entries.find(e => e.path === join('subdir', 'nested', 'file4.txt'));
+
+      expect(file1?.kind).toBe('file');
+      expect(dir?.kind).toBe('directory');
+      expect(nestedFile?.kind).toBe('file');
+    });
+
     it('should support abort signal', async () => {
       const sourceDir = join(testDir, 'abort-test');
       mkdirSync(sourceDir, { recursive: true });

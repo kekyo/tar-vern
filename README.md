@@ -415,6 +415,8 @@ const packer = createTarPacker(generator);
 await storeReaderToFile(packer, 'archive.tar');
 ```
 
+If the `relativePaths` parameter is omitted, all files and directories in the `baseDir` are automatically collected recursively.
+
 ### extractTo()
 
 Extracts tar entries directly to a filesystem directory:
