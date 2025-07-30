@@ -2,6 +2,8 @@
 
 Streaming tape archiver (tar) library for TypeScript/JavaScript.
 
+![tar-vern](images/tar-vern-120-c.png)
+
 [![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm version](https://img.shields.io/npm/v/tar-vern.svg)](https://www.npmjs.com/package/tar-vern)
@@ -119,11 +121,59 @@ for await (const extractedItem of createTarExtractor(stream, 'gzip')) {
 npm install tar-vern
 ```
 
+## Common workflow
+
+First, we will show the simplest example, which is simply packing a tar file from a set of files, and extracting all files from a tar file.
+
+### createEntryItemGenerator()
+
+Creates an async generator from filesystem paths, designed to pack with glob patterns:
+
+```typescript
+import { glob } from 'glob';
+import { createEntryItemGenerator, createTarPacker } from 'tar-vern';
+
+// Find files using glob patterns
+const baseDir = '/path/to/source';
+const relativePaths = await glob('**/*.{js,ts,json}', { cwd: baseDir });
+
+// Create tar from glob results
+const generator = createEntryItemGenerator(baseDir, relativePaths);
+const packer = createTarPacker(generator);
+await storeReaderToFile(packer, 'archive.tar');
+```
+
+If the `relativePaths` parameter is omitted in the `createEntryItemGenerator()` argument, all files and directories in the `baseDir` are automatically collected recursively.
+
+### extractTo()
+
+Extracts tar entries directly to a filesystem directory:
+
+```typescript
+import { createReadStream } from 'fs';
+import { createTarExtractor, extractTo } from 'tar-vern';
+
+// Extract tar archive to directory
+const stream = createReadStream('archive.tar');
+const extractor = createTarExtractor(stream);
+await extractTo(extractor, '/path/to/destination');
+```
+
+## Is that all?
+
+Not satisfied with what can be achieved with the `tar` command, such as packing and extracting tar files?
+
+Of course, tar-vern can fully-programmable packing directories and files, and add custom operations during extraction. This can be written very concisely using the standard TypeScript "async generator function."
+
+Let's dig deeper into the flexible features of tar-vern.
+
+----
+
 ## Usage for tar packing
 
 ### EntryItem basis
 
-The async generator needs to produce `EntryItem` objects.
+The "async generator" needs to produce `EntryItem` objects.
 These objects hold information about files and directories to be stored in the tar archive, and for files, they also contain content data information.
 
 There are no special requirements for this information, so you can construct everything manually:
@@ -160,7 +210,7 @@ const itemGenerator = async function*() {
 
 However, constructing all `EntryItem` objects manually can be tedious. Therefore, helper functions are provided as follows.
 
-### Helper functions
+### EntryItem helper functions
 
 Helper functions are provided to simplify the construction of `EntryItem` objects. The following types are available:
 
@@ -171,8 +221,6 @@ Helper functions are provided to simplify the construction of `EntryItem` object
 |`createReadableFileItem()`|Construct file item from readable stream (`stream.Readable`)|
 |`createGeneratorFileItem()`|Construct file item from async generator|
 |`createReadFileItem()`|Construct file item from a file on real filesystem|
-|`createEntryItemGenerator()`|Create async generator from filesystem paths|
-|`extractTo()`|Extract tar entries to filesystem directory|
 
 For example:
 
@@ -252,9 +300,9 @@ const itemGenerator = async function*() {
   );
 };
 
-// Create uncompressed tar stream
-const packer = createTarPacker(itemGenerator(), 'none');
-await storeReaderToFile(packer, 'archive.tar');
+// Create GZip compressed tar stream ('gzip')
+const packer = createTarPacker(itemGenerator(), 'gzip');
+await storeReaderToFile(packer, 'archive.tar.gz');
 ```
 
 ----
@@ -346,7 +394,12 @@ for await (const item of createTarExtractor(stream)) {
 
 ### With GZip decompression
 
-Support for gzip-compressed tar files (`.tar.gz` or `.tgz`):
+Support for gzip-compressed tar files (`.tar.gz` or `.tgz`) with `CompressionTypes`:
+
+|`CompressionTypes`|Details|
+|:----|:----|
+|`none`|Uncompression (default)|
+|`gzip`|Combined GZip decompression stream|
 
 ```typescript
 import { createReadStream } from 'fs';
@@ -355,6 +408,7 @@ import { createTarExtractor } from 'tar-vern';
 // Extract from compressed tar file
 const stream = createReadStream('archive.tar.gz');
 
+// With 'gzip'
 for await (const item of createTarExtractor(stream, 'gzip')) {
   console.log(`Extracted: ${item.path}`);
   
@@ -392,44 +446,6 @@ try {
 ```
 
 ----
-
-## Common workflow helper functions
-
-For common workflows, additional helper functions are available:
-
-### createEntryItemGenerator()
-
-Creates an async generator from filesystem paths, designed to pack with glob patterns:
-
-```typescript
-import { glob } from 'glob';
-import { createEntryItemGenerator, createTarPacker, storeReaderToFile } from 'tar-vern';
-
-// Find files using glob patterns
-const baseDir = '/path/to/source';
-const files = await glob('**/*.{js,ts,json}', { cwd: baseDir });
-
-// Create tar from glob results
-const generator = createEntryItemGenerator(baseDir, files);
-const packer = createTarPacker(generator);
-await storeReaderToFile(packer, 'archive.tar');
-```
-
-If the `relativePaths` parameter is omitted, all files and directories in the `baseDir` are automatically collected recursively.
-
-### extractTo()
-
-Extracts tar entries directly to a filesystem directory:
-
-```typescript
-import { createReadStream } from 'fs';
-import { createTarExtractor, extractTo } from 'tar-vern';
-
-// Extract tar archive to directory
-const stream = createReadStream('archive.tar');
-const extractor = createTarExtractor(stream);
-await extractTo(extractor, '/path/to/destination');
-```
 
 ## Abort signal support
 

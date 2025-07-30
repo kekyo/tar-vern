@@ -27,7 +27,8 @@
   },
   "files": [
     "dist",
-    "README_pack.md"
+    "README_pack.md",
+    "images/tar-vern-120-c.png"
   ],
   "scripts": {
     "build": "vite build",
