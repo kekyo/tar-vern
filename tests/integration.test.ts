@@ -319,7 +319,7 @@ describe('Integration tests', () => {
     const allPaths = [...allDirs, ...files];
 
     // Pack with tar-vern
-    const generator = createEntryItemGenerator(sourceDir, allPaths);
+    const generator = createEntryItemGenerator(sourceDir, allPaths, true);
     const packer = createTarPacker(generator);
     
     const tarPath = join(testDir, 'test.tar');
@@ -407,7 +407,7 @@ describe('Integration tests', () => {
     const allPaths = [...allDirs, ...files];
 
     // Pack with tar-vern (gzip)
-    const generator = createEntryItemGenerator(sourceDir, allPaths);
+    const generator = createEntryItemGenerator(sourceDir, allPaths, true);
     const packer = createTarPacker(generator, 'gzip');
     
     const tgzPath = join(testDir, 'test.tar.gz');
@@ -485,7 +485,7 @@ describe('Integration tests', () => {
     writeFileSync(filePath, fileData, { mode: fileMode });
 
     // Pack with tar-vern
-    const generator = createEntryItemGenerator(sourceDir, [fileName]);
+    const generator = createEntryItemGenerator(sourceDir, [fileName], true);
     const packer = createTarPacker(generator);
     
     const tarPath = join(testDir, 'large.tar');
@@ -521,7 +521,7 @@ describe('Integration tests', () => {
     }
 
     // Pack with tar-vern
-    const generator = createEntryItemGenerator(sourceDir, emptyFileNames);
+    const generator = createEntryItemGenerator(sourceDir, emptyFileNames, true);
     const packer = createTarPacker(generator);
     
     const tarPath = join(testDir, 'empty.tar');

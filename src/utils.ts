@@ -342,6 +342,7 @@ const getAllFilesInDirectory = async (
  * Create an async generator that yields EntryItem objects from filesystem paths
  * @param baseDir - Base directory path for resolving relative paths
  * @param relativePaths - Array of relative paths to include in the tar archive (optional)
+ * @param includeDirectory - Whether to include DirectoryItem objects (Default: true)
  * @param reflectStat - Whether to reflect file stats (Default: 'exceptName')
  * @param signal - Optional abort signal to cancel the operation
  * @returns Async generator that yields EntryItem objects
@@ -349,10 +350,12 @@ const getAllFilesInDirectory = async (
 export const createEntryItemGenerator = async function* (
   baseDir: string,
   relativePaths?: string[],
+  includeDirectory?: boolean,
   reflectStat?: ReflectStats,
   signal?: AbortSignal
 ): AsyncGenerator<EntryItem, void, unknown> {
   const rs = reflectStat ?? 'exceptName';
+  const includeDir = includeDirectory ?? true;
   
   // If relativePaths is not provided, collect all files in baseDir
   const pathsToProcess = relativePaths ?? await getAllFilesInDirectory(baseDir, signal);
@@ -366,8 +369,8 @@ export const createEntryItemGenerator = async function* (
       signal?.throwIfAborted();
       const stats = await stat(fsPath);
       
-      if (stats.isDirectory()) {
-        // Create directory entry
+      // Create directory entry only if includeDirectory is true
+      if (includeDir && stats.isDirectory()) {
         yield await createDirectoryItem(relativePath, rs, {
           directoryPath: fsPath
         }, signal);

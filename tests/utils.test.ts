@@ -43,7 +43,7 @@ describe('Helper functions test', () => {
       ];
 
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(sourceDir, relativePaths)) {
+      for await (const entry of createEntryItemGenerator(sourceDir, relativePaths, true)) {
         entries.push(entry);
       }
 
@@ -68,7 +68,7 @@ describe('Helper functions test', () => {
       ];
 
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(testDir, relativePaths)) {
+      for await (const entry of createEntryItemGenerator(testDir, relativePaths, true)) {
         entries.push(entry);
       }
 
@@ -85,7 +85,7 @@ describe('Helper functions test', () => {
 
       // Test with 'all' reflectStat
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(sourceDir, ['test.txt'], 'all')) {
+      for await (const entry of createEntryItemGenerator(sourceDir, ['test.txt'], true, 'all')) {
         entries.push(entry);
       }
 
@@ -118,7 +118,7 @@ describe('Helper functions test', () => {
 
       // Test createEntryItemGenerator without relativePaths
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(sourceDir)) {
+      for await (const entry of createEntryItemGenerator(sourceDir, undefined, true)) {
         entries.push(entry);
       }
 
@@ -156,7 +156,7 @@ describe('Helper functions test', () => {
         'file2.txt'
       ];
 
-      const generator = createEntryItemGenerator(sourceDir, relativePaths, 'exceptName', controller.signal);
+      const generator = createEntryItemGenerator(sourceDir, relativePaths, true, 'exceptName', controller.signal);
       
       // Get first entry
       const { value: entry1 } = await generator.next();
@@ -167,6 +167,80 @@ describe('Helper functions test', () => {
 
       // Should throw on next iteration
       await expect(generator.next()).rejects.toThrow();
+    });
+
+    it('should exclude directories when includeDirectory is false', async () => {
+      // Create test files and directories
+      const sourceDir = join(testDir, 'exclude-dirs');
+      mkdirSync(sourceDir, { recursive: true });
+      
+      writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
+      writeFileSync(join(sourceDir, 'file2.txt'), 'Content 2');
+      
+      const subDir = join(sourceDir, 'subdir');
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(join(subDir, 'file3.txt'), 'Content 3');
+
+      // Test with includeDirectory = false
+      const relativePaths = [
+        'file1.txt',
+        'file2.txt', 
+        'subdir',
+        'subdir/file3.txt'
+      ];
+
+      const entries: EntryItem[] = [];
+      for await (const entry of createEntryItemGenerator(sourceDir, relativePaths, false)) {
+        entries.push(entry);
+      }
+
+      // Should only have files, no directories
+      expect(entries).toHaveLength(3);
+      
+      const file1 = entries.find(e => e.path.endsWith('file1.txt'));
+      const file2 = entries.find(e => e.path.endsWith('file2.txt'));
+      const file3 = entries.find(e => e.path.endsWith('file3.txt'));
+      const dir = entries.find(e => e.path.endsWith('subdir'));
+
+      expect(file1?.kind).toBe('file');
+      expect(file2?.kind).toBe('file');
+      expect(file3?.kind).toBe('file');
+      expect(dir).toBeUndefined(); // Directory should be excluded
+    });
+
+    it('should include directories by default when includeDirectory is not specified', async () => {
+      // Create test files and directories
+      const sourceDir = join(testDir, 'default-include');
+      mkdirSync(sourceDir, { recursive: true });
+      
+      writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
+      
+      const subDir = join(sourceDir, 'subdir');
+      mkdirSync(subDir, { recursive: true });
+      writeFileSync(join(subDir, 'file2.txt'), 'Content 2');
+
+      const relativePaths = [
+        'file1.txt',
+        'subdir',
+        'subdir/file2.txt'
+      ];
+
+      // Test without specifying includeDirectory (should default to true)
+      const entries: EntryItem[] = [];
+      for await (const entry of createEntryItemGenerator(sourceDir, relativePaths)) {
+        entries.push(entry);
+      }
+
+      // Should include both files and directory
+      expect(entries).toHaveLength(3);
+      
+      const file1 = entries.find(e => e.path.endsWith('file1.txt'));
+      const file2 = entries.find(e => e.path.endsWith('file2.txt'));
+      const dir = entries.find(e => e.path.endsWith('subdir'));
+
+      expect(file1?.kind).toBe('file');
+      expect(file2?.kind).toBe('file');
+      expect(dir?.kind).toBe('directory');
     });
   });
 
@@ -191,7 +265,7 @@ describe('Helper functions test', () => {
         'subdir/file3.txt'
       ];
 
-      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths);
+      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths, true);
       const packer = createTarPacker(itemGenerator);
       
       // Read tar data into buffer
@@ -250,7 +324,7 @@ describe('Helper functions test', () => {
         'level1/level2/level3/deep-file.txt'
       ];
 
-      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths);
+      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths, true);
       const packer = createTarPacker(itemGenerator);
       
       // Create tar file
@@ -284,7 +358,7 @@ describe('Helper functions test', () => {
         'file2.txt'
       ];
 
-      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths);
+      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths, true);
       const packer = createTarPacker(itemGenerator);
       
       const tarPath = join(testDir, 'abort.tar');
@@ -329,7 +403,7 @@ describe('Helper functions test', () => {
         'docs/guide.md'
       ];
 
-      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths, 'exceptName');
+      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths, true, 'exceptName');
       const packer = createTarPacker(itemGenerator);
       
       const tarPath = join(testDir, 'integration.tar');
