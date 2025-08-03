@@ -1,5 +1,6 @@
 {
   "name": "tar-vern",
+  "version": "0.0.1",
   "description": "Tape archiver library for Typescript",
   "keywords": [
     "typescript",
