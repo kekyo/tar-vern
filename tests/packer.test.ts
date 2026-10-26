@@ -26,7 +26,6 @@ import {
   createReadFileItem,
   storeReaderToFile,
 } from '../src/node.ts';
-import { createTarPackerWithGzip } from '../src/node-gzip.ts';
 
 describe('Tar packer test', () => {
   const tempBaseDir = join(
@@ -858,7 +857,7 @@ describe('Tar packer test', () => {
 
     // Use createTarPacker with CompressionTypes.gzip
     const compressionType: CompressionTypes = 'gzip';
-    const packer = createTarPackerWithGzip(generator(), compressionType);
+    const packer = createTarPacker(generator(), compressionType);
 
     // Store the compressed packer stream to a .tgz file
     const tgzPath = join(testDir, 'builtin-compressed.tgz');

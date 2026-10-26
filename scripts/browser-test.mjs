@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gzipSync, gunzipSync } from 'node:zlib';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { createServer } from 'vite';
@@ -148,7 +149,8 @@ try {
         return btoa(String.fromCharCode(...bytes));
       `);
       const archivePath = join(fixtures, `${engine}.tar`);
-      await writeFile(archivePath, Buffer.from(archive, 'base64'));
+      const rawTar = Buffer.from(archive, 'base64');
+      await writeFile(archivePath, rawTar);
 
       await call('browser_click', { target: '#archive' });
       await call('browser_file_upload', { paths: [archivePath] });
@@ -196,6 +198,53 @@ try {
       });
       console.log(
         `[${engine}] File selection, tar round-trip, download and cancellation passed`
+      );
+
+      await call('browser_click', { target: '#gzip' });
+      await call('browser_click', { target: '#download' });
+      const gzipStatus = await finished();
+      assert.match(
+        gzipStatus,
+        new RegExp(`^Complete: ${files.length} files, [0-9]+ archive bytes$`)
+      );
+      const compressedArchive = await evaluate(`
+        const save = document.querySelector('#save');
+        if (save.hidden || save.download !== 'archive.tar.gz') throw new Error('Missing gzip download');
+        const response = await fetch(save.href);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        return btoa(String.fromCharCode(...bytes));
+      `);
+      const browserGzip = Buffer.from(compressedArchive, 'base64');
+      assert.equal(
+        gzipStatus,
+        `Complete: ${files.length} files, ${browserGzip.length} archive bytes`
+      );
+      // Compare the expanded archive: compression bytes may differ by engine.
+      assert.deepEqual(gunzipSync(browserGzip), rawTar);
+      const browserGzipPath = join(fixtures, `${engine}-browser.tar.gz`);
+      await writeFile(browserGzipPath, browserGzip);
+      const nodeGzipPath = join(fixtures, `${engine}-node.tar.gz`);
+      await writeFile(nodeGzipPath, gzipSync(rawTar, { level: 9 }));
+
+      for (const path of [browserGzipPath, nodeGzipPath]) {
+        await call('browser_click', { target: '#archive' });
+        await call('browser_file_upload', { paths: [path] });
+        await call('browser_click', { target: '#extract' });
+        assert.equal(await finished(), `Complete: ${files.length} entries`);
+        assert.deepEqual(
+          await evaluate(
+            `return Array.from(document.querySelectorAll('#entries li'), row => row.textContent);`
+          ),
+          expectedRows
+        );
+      }
+      await call('browser_take_screenshot', {
+        filename: join(output, `${engine}-gzip.png`),
+        fullPage: true,
+        scale: 'css',
+      });
+      console.log(
+        `[${engine}] Browser gzip generation, Node gzip interoperability and browser extraction passed`
       );
     } finally {
       await client.close();

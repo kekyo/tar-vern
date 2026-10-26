@@ -3,6 +3,7 @@
 // Under MIT.
 // https://github.com/kekyo/tar-vern/
 
+import { transformGzip } from './compression.ts';
 import type {
   CompressionTypes,
   ExtractedEntryItem,
@@ -263,12 +264,15 @@ export const createTarExtractor = (
     void,
     unknown
   > {
-    if (compressionType && compressionType !== 'none')
-      throw new Error('Gzip is not available in the portable entry yet');
-    // A dedicated reader owns excess bytes rather than overloading iterator.return().
-    const input = createByteReader(readable, ownSignal);
+    let input: ReturnType<typeof createByteReader> | undefined;
     let previous: ReturnType<typeof createFileContent> | undefined;
     try {
+      const source =
+        compressionType === 'gzip'
+          ? transformGzip(readable, 'decompress', ownSignal)
+          : readable;
+      // A dedicated reader owns excess bytes rather than overloading iterator.return().
+      input = createByteReader(source, ownSignal);
       while (true) {
         ownSignal.throwIfAborted();
         // Skip unread content and its padding before reading the next header.
@@ -319,7 +323,7 @@ export const createTarExtractor = (
       scope.controller.abort(
         new DOMException('Archive enumeration ended', 'AbortError')
       );
-      await input.close();
+      await input?.close();
       scope.dispose();
     }
   })();

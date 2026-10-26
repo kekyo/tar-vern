@@ -127,11 +127,82 @@ export const runBrowserChecks = async () => {
     'Content cancellation lost the next entry'
   );
   await partial.return();
+  const compressed = new Uint8Array(
+    await new Response(
+      createTarPacker(
+        entries(await createBlobFileItem('gzip', new Blob(['gzip 日本語']))),
+        'gzip'
+      )
+    ).arrayBuffer()
+  );
+  const gzipFiles = [];
+  for await (const file of createTarExtractor(
+    new Blob([compressed]).stream(),
+    'gzip'
+  )) {
+    if (file.kind === 'file') gzipFiles.push(await file.getContent('string'));
+  }
+  check(
+    JSON.stringify(gzipFiles) === JSON.stringify(['gzip 日本語']),
+    'Gzip round trip failed'
+  );
+  compressed[compressed.length - 8] ^= 255;
+  let corruptionRejected = false;
+  try {
+    for await (const file of createTarExtractor(
+      new Blob([compressed]).stream(),
+      'gzip'
+    )) {
+      if (file.kind === 'file') await file.getContent('bytes');
+    }
+  } catch {
+    corruptionRejected = true;
+  }
+  check(corruptionRejected, 'Corrupt gzip trailer was accepted');
+
+  let gzipWake!: () => void;
+  const gzipWaiting = new Promise<void>((resolve) => {
+    gzipWake = resolve;
+  });
+  let gzipStopped = false;
+  const gzipSource = new ReadableStream<Uint8Array>(
+    {
+      pull() {
+        gzipWake();
+      },
+      cancel() {
+        gzipStopped = true;
+      },
+    },
+    { highWaterMark: 0 }
+  );
+  const gzipAbort = new AbortController();
+  const gzipOutput = createTarPacker(
+    entries(await createReadableFileItem('pending', gzipSource, { length: 1 })),
+    'gzip',
+    gzipAbort.signal
+  );
+  const gzipResult = (async () => {
+    try {
+      await new Response(gzipOutput).arrayBuffer();
+      return false;
+    } catch {
+      return true;
+    }
+  })();
+  await gzipWaiting;
+  gzipAbort.abort();
+  check(await gzipResult, 'Gzip cancellation was ignored');
+  check(
+    gzipStopped && !gzipSource.locked,
+    'Gzip cancellation did not release source'
+  );
   return {
     files: values.length,
     backpressure: true,
     cancellation: true,
     pendingAbort: true,
+    gzip: true,
     userAgent: navigator.userAgent,
   };
 };

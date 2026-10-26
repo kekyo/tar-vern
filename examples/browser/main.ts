@@ -4,6 +4,7 @@ import {
   createTarExtractor,
 } from 'tar-vern';
 
+const gzip = document.querySelector<HTMLInputElement>('#gzip')!;
 const files = document.querySelector<HTMLInputElement>('#files')!;
 const archive = document.querySelector<HTMLInputElement>('#archive')!;
 const status = document.querySelector<HTMLOutputElement>('#status')!;
@@ -65,7 +66,11 @@ const pack = async (download: boolean) =>
     };
     const chunks: Uint8Array[] = [];
     let bytes = 0;
-    await createTarPacker(entries(), 'none', signal).pipeTo(
+    await createTarPacker(
+      entries(),
+      gzip.checked ? 'gzip' : 'none',
+      signal
+    ).pipeTo(
       new WritableStream<Uint8Array>({
         write(chunk) {
           bytes += chunk.length;
@@ -78,10 +83,12 @@ const pack = async (download: boolean) =>
     if (download) {
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
       downloadUrl = URL.createObjectURL(
-        new Blob(chunks, { type: 'application/x-tar' })
+        new Blob(chunks, {
+          type: gzip.checked ? 'application/gzip' : 'application/x-tar',
+        })
       );
       save.href = downloadUrl;
-      save.download = 'archive.tar';
+      save.download = gzip.checked ? 'archive.tar.gz' : 'archive.tar';
       save.hidden = false;
     }
     status.textContent = `Complete: ${selected.length} files, ${bytes} archive bytes`;
@@ -102,7 +109,7 @@ document.querySelector<HTMLButtonElement>('#extract')!.onclick = async () => {
     let total = 0;
     for await (const entry of createTarExtractor(
       file.stream(),
-      'none',
+      gzip.checked ? 'gzip' : 'none',
       signal
     )) {
       let bytes = 0;

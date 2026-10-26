@@ -3,6 +3,7 @@
 // Under MIT.
 // https://github.com/kekyo/tar-vern/
 
+import { transformGzip } from './compression.ts';
 import { getBytes, concatBytes, validateLength, writeText } from './bytes.ts';
 // Tar specification: name max 100 bytes, prefix max 155 bytes
 const MAX_NAME = 100;
@@ -159,10 +160,13 @@ export const createTarPacker = (
   compressionType?: CompressionTypes,
   signal?: AbortSignal
 ): ReadableStream<Uint8Array> => {
-  if (compressionType && compressionType !== 'none')
-    throw new Error('Gzip is not available in the portable entry yet');
+  if (
+    compressionType === 'gzip' &&
+    typeof globalThis.CompressionStream !== 'function'
+  )
+    throw new Error('CompressionStream is required for gzip');
   // Create an async iterator and connect its lifetime to the output stream.
-  return readableFrom(async function* (ownSignal) {
+  const output = readableFrom(async function* (ownSignal) {
     // Iterate over the entry items.
     for await (const entryItem of iterateSource(
       entryItemGenerator,
@@ -248,4 +252,7 @@ export const createTarPacker = (
     // Terminate the tar stream with two zero blocks.
     yield terminatorBytes.slice();
   }, signal);
+  return compressionType === 'gzip'
+    ? transformGzip(output, 'compress', signal)
+    : output;
 };

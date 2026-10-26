@@ -16,7 +16,6 @@ import {
 import { spawn } from 'child_process';
 import dayjs from 'dayjs';
 import { createTarExtractor } from '../src/extractor.ts';
-import { createTarExtractorWithGzip } from '../src/node-gzip.ts';
 import {
   CompressionTypes,
   ExtractedEntryItem,
@@ -103,7 +102,7 @@ describe('Tar extractor test', () => {
 
     const extractor =
       compressionType === 'gzip'
-        ? createTarExtractorWithGzip(stream, compressionType)
+        ? createTarExtractor(stream, compressionType)
         : createTarExtractor(stream, compressionType);
     for await (const entry of extractor) {
       if (entry.kind === 'file') {
