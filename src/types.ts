@@ -24,7 +24,7 @@ export interface EntryItemGeneratorContent extends EntryItemContentBase {
   /**
    * The generator function
    */
-  readonly generator: AsyncGenerator<Buffer, void, unknown>;
+  readonly generator: AsyncIterable<Uint8Array>;
 }
 
 /**
@@ -91,7 +91,7 @@ export interface FileItem extends EntryItemBase {
   /**
    * The content of the item
    */
-  readonly content: string | Buffer | EntryItemContent;
+  readonly content: string | Uint8Array | EntryItemContent;
 }
 
 /**

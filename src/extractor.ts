@@ -5,13 +5,13 @@
 
 import { Readable } from 'stream';
 import { createGunzip } from 'zlib';
-import {
+import type {
   CompressionTypes,
   ExtractedDirectoryItem,
   ExtractedEntryItem,
   ExtractedFileItem,
-} from './types';
-import { getBuffer } from './utils';
+} from './types.ts';
+import { concatBytes, decodeBytes, getBytes } from './bytes.ts';
 
 /**
  * Parse octal bytes to number
@@ -21,13 +21,11 @@ import { getBuffer } from './utils';
  * @returns The parsed number
  */
 const parseOctalBytes = (
-  buffer: Buffer,
+  buffer: Uint8Array,
   offset: number,
   length: number
 ): number => {
-  const str = buffer
-    .subarray(offset, offset + length)
-    .toString('ascii')
+  const str = decodeBytes(buffer.subarray(offset, offset + length))
     .replace(/\0/g, '')
     .trim();
   return str ? parseInt(str, 8) : 0;
@@ -41,13 +39,11 @@ const parseOctalBytes = (
  * @returns The parsed string
  */
 const parseString = (
-  buffer: Buffer,
+  buffer: Uint8Array,
   offset: number,
   length: number
 ): string => {
-  return buffer
-    .subarray(offset, offset + length)
-    .toString('utf8')
+  return decodeBytes(buffer.subarray(offset, offset + length))
     .replace(/\0/g, '')
     .trim();
 };
@@ -60,11 +56,11 @@ const parseString = (
  * @returns The buffer containing the read bytes
  */
 const readExactBytes = async (
-  iterator: AsyncIterator<string | Buffer>,
+  iterator: AsyncIterator<string | Uint8Array>,
   size: number,
   signal: AbortSignal | undefined
-): Promise<Buffer | undefined> => {
-  const chunks: Buffer[] = [];
+): Promise<Uint8Array | undefined> => {
+  const chunks: Uint8Array[] = [];
   let totalRead = 0;
 
   while (totalRead < size) {
@@ -81,7 +77,7 @@ const readExactBytes = async (
       }
     }
 
-    const chunk = getBuffer(value);
+    const chunk = getBytes(value);
     const needed = size - totalRead;
 
     if (chunk.length <= needed) {
@@ -96,7 +92,7 @@ const readExactBytes = async (
     }
   }
 
-  return Buffer.concat(chunks, size);
+  return concatBytes(chunks, size);
 };
 
 /**
@@ -106,7 +102,7 @@ const readExactBytes = async (
  * @param signal - The abort signal
  */
 const skipExactBytes = async (
-  iterator: AsyncIterator<string | Buffer>,
+  iterator: AsyncIterator<string | Uint8Array>,
   size: number,
   signal: AbortSignal | undefined
 ): Promise<void> => {
@@ -122,7 +118,7 @@ const skipExactBytes = async (
       );
     }
 
-    const chunk = getBuffer(value);
+    const chunk = getBytes(value);
     const needed = size - totalSkipped;
 
     if (chunk.length <= needed) {
@@ -142,7 +138,7 @@ const skipExactBytes = async (
  * @param signal - Abort signal
  */
 const skipPaddingBytesTo512Boundary = async (
-  iterator: AsyncIterator<string | Buffer>,
+  iterator: AsyncIterator<string | Uint8Array>,
   contentSize: number,
   signal: AbortSignal | undefined
 ) => {
@@ -180,7 +176,7 @@ interface EntryItemInfo {
  * @param buffer - The buffer containing the tar header
  * @returns The parsed entry information or null if end of archive
  */
-const parseTarHeader = (buffer: Buffer): EntryItemInfo | undefined => {
+const parseTarHeader = (buffer: Uint8Array): EntryItemInfo | undefined => {
   // Check if this is the end of archive (all zeros)
   if (buffer.every((b) => b === 0)) {
     return undefined;
@@ -249,10 +245,10 @@ const parseTarHeader = (buffer: Buffer): EntryItemInfo | undefined => {
  * Create a buffered async iterator that allows returning data
  */
 const createBufferedAsyncIterator = (
-  iterable: AsyncIterable<string | Buffer>,
+  iterable: AsyncIterable<string | Uint8Array>,
   signal: AbortSignal | undefined
-): AsyncIterator<string | Buffer> => {
-  const buffer: (string | Buffer)[] = [];
+): AsyncIterator<string | Uint8Array> => {
+  const buffer: (string | Uint8Array)[] = [];
   const iterator = iterable[Symbol.asyncIterator]();
   return {
     next: async () => {
@@ -262,7 +258,7 @@ const createBufferedAsyncIterator = (
       }
       return iterator.next();
     },
-    return: async (value?: string | Buffer) => {
+    return: async (value?: string | Uint8Array) => {
       if (value !== undefined) {
         buffer.unshift(value);
       }
@@ -279,7 +275,7 @@ const createBufferedAsyncIterator = (
  * @returns Readable stream
  */
 const createReadableFromIterator = (
-  iterator: AsyncIterator<string | Buffer>,
+  iterator: AsyncIterator<string | Uint8Array>,
   size: number,
   signal: AbortSignal | undefined,
   consumedRef: { consumed: boolean }
@@ -297,7 +293,7 @@ const createReadableFromIterator = (
         );
       }
 
-      const chunk = getBuffer(value);
+      const chunk = getBytes(value);
       if (chunk.length <= remainingBytes) {
         remainingBytes -= chunk.length;
         yield chunk;
@@ -378,7 +374,7 @@ export const createTarExtractor = async function* (
     }
 
     // Read header (512 bytes)
-    let headerBuffer: Buffer | undefined;
+    let headerBuffer: Uint8Array | undefined;
     try {
       headerBuffer = await readExactBytes(iterator, 512, signal);
     } catch (error) {
@@ -461,7 +457,7 @@ export const createTarExtractor = async function* (
                 signal
               );
               currentHeader.consumed = true;
-              return dataBuffer.toString('utf8');
+              return decodeBytes(dataBuffer);
             }
             // For buffer
             case 'buffer': {
@@ -483,7 +479,7 @@ export const createTarExtractor = async function* (
                 signal
               );
               currentHeader.consumed = true;
-              return dataBuffer;
+              return Buffer.from(dataBuffer);
             }
             // For Readble stream
             case 'readable': {

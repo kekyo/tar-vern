@@ -5,8 +5,10 @@
 
 import { Readable } from 'stream';
 import { createGzip } from 'zlib';
-import { getBuffer, MAX_NAME, MAX_PREFIX } from './utils';
-import { CompressionTypes, EntryItem, EntryItemContent } from './types';
+import { getBytes, concatBytes, validateLength, writeText } from './bytes.ts';
+const MAX_NAME = 100;
+const MAX_PREFIX = 155;
+import { CompressionTypes, EntryItem, EntryItemContent } from './types.ts';
 
 /**
  * Get the byte length of a string in UTF-8
@@ -14,7 +16,7 @@ import { CompressionTypes, EntryItem, EntryItemContent } from './types';
  * @returns The byte length of the string
  */
 const utf8ByteLength = (str: string) => {
-  return Buffer.byteLength(str, 'utf8');
+  return getBytes(str).length;
 };
 
 /**
@@ -29,7 +31,7 @@ const truncateUtf8Safe = (str: string, maxBytes: number) => {
   while (i < str.length) {
     const codePoint = str.codePointAt(i)!;
     const char = String.fromCodePoint(codePoint);
-    const charBytes = Buffer.byteLength(char, 'utf8');
+    const charBytes = getBytes(char).length;
     if (total + charBytes > maxBytes) break;
     total += charBytes;
     i += char.length;
@@ -75,7 +77,7 @@ const splitPath = (path: string) => {
  */
 const getOctalBytes = (value: number, length: number) => {
   const str = value.toString(8).padStart(length - 1, '0') + '\0';
-  return Buffer.from(str, 'ascii');
+  return getBytes(str);
 };
 
 /**
@@ -83,19 +85,22 @@ const getOctalBytes = (value: number, length: number) => {
  * @param buffer - The buffer to get padded bytes from
  * @returns The padded bytes
  */
-const getPaddedBytes = (buffer: Buffer) => {
+const getPaddedBytes = (buffer: Uint8Array) => {
   const extra = buffer.length % 512;
   if (extra === 0) {
     return buffer;
   } else {
-    return Buffer.concat([buffer, Buffer.alloc(512 - extra, 0)]);
+    return concatBytes(
+      [buffer, new Uint8Array(512 - extra)],
+      buffer.length + 512 - extra
+    );
   }
 };
 
 /**
  * The terminator bytes
  */
-const terminatorBytes = Buffer.alloc(1024, 0);
+const terminatorBytes = new Uint8Array(1024);
 
 /**
  * Create a tar header
@@ -117,40 +122,41 @@ const createTarHeader = (
   gid: number,
   date: Date
 ) => {
+  validateLength(size);
   // Allocate header bytes
-  const buffer = Buffer.alloc(512, 0);
+  const buffer = new Uint8Array(512);
 
   // Split path into name and prefix
   const { name, prefix } = splitPath(path);
 
   // Write name, mode, uid, gid, size, mtime, typeflag, prefix, checksum
-  buffer.write(name, 0, 100, 'utf8');
-  getOctalBytes(mode & 0o7777, 8).copy(buffer, 100);
-  getOctalBytes(uid, 8).copy(buffer, 108);
-  getOctalBytes(gid, 8).copy(buffer, 116);
-  getOctalBytes(size, 12).copy(buffer, 124);
-  getOctalBytes(Math.floor(date.getTime() / 1000), 12).copy(buffer, 136);
+  writeText(buffer, name, 0, 100);
+  buffer.set(getOctalBytes(mode & 0o7777, 8), 100);
+  buffer.set(getOctalBytes(uid, 8), 108);
+  buffer.set(getOctalBytes(gid, 8), 116);
+  buffer.set(getOctalBytes(size, 12), 124);
+  buffer.set(getOctalBytes(Math.floor(date.getTime() / 1000), 12), 136);
 
   // Check sum space
-  Buffer.from('        ', 'ascii').copy(buffer, 148);
+  buffer.fill(32, 148, 156);
 
   if (type === 'file') {
-    buffer.write('0', 156, 1, 'ascii'); // typeflag (file)
+    writeText(buffer, '0', 156, 1); // typeflag (file)
   } else {
-    buffer.write('5', 156, 1, 'ascii'); // typeflag (directory)
+    writeText(buffer, '5', 156, 1); // typeflag (directory)
   }
-  buffer.write('ustar\0', 257, 6, 'ascii');
-  buffer.write('00', 263, 2, 'ascii'); // version
-  buffer.write(uname, 265, 32, 'utf8');
-  buffer.write(gname, 297, 32, 'utf8');
-  buffer.write(prefix, 345, 155, 'utf8'); // Path prefix
+  writeText(buffer, 'ustar\0', 257, 6);
+  writeText(buffer, '00', 263, 2); // version
+  writeText(buffer, uname, 265, 32);
+  writeText(buffer, gname, 297, 32);
+  writeText(buffer, prefix, 345, 155); // Path prefix
 
   // Calculate check sum
   let sum = 0;
   for (let i = 0; i < 512; i++) {
     sum += buffer[i];
   }
-  getOctalBytes(sum, 8).copy(buffer, 148);
+  buffer.set(getOctalBytes(sum, 8), 148);
 
   return buffer;
 };
@@ -182,10 +188,10 @@ export const createTarPacker = (
           // Content is a string or buffer
           if (
             typeof entryItemContent === 'string' ||
-            Buffer.isBuffer(entryItemContent)
+            entryItemContent instanceof Uint8Array
           ) {
             // Get content bytes from string or buffer
-            const contentBytes = getBuffer(entryItemContent);
+            const contentBytes = getBytes(entryItemContent);
 
             // Create and produce tar header bytes
             const tarHeaderBytes = createTarHeader(
@@ -228,8 +234,10 @@ export const createTarPacker = (
               case 'generator': {
                 for await (const contentBytes of content.generator) {
                   signal?.throwIfAborted();
-                  yield contentBytes;
                   position += contentBytes.length;
+                  if (position > content.length)
+                    throw new Error('Content size exceeds declared length');
+                  yield contentBytes;
                 }
                 break;
               }
@@ -237,18 +245,23 @@ export const createTarPacker = (
               case 'readable': {
                 for await (const chunk of content.readable) {
                   signal?.throwIfAborted();
-                  const contentBytes = getBuffer(chunk);
-                  yield contentBytes;
+                  const contentBytes = getBytes(chunk);
                   position += contentBytes.length;
+                  if (position > content.length)
+                    throw new Error('Content size exceeds declared length');
+                  yield contentBytes;
                 }
                 break;
               }
             }
 
+            if (position !== content.length)
+              throw new Error('Content size differs from declared length');
+
             // Padding space
             if (position % 512 !== 0) {
               signal?.throwIfAborted();
-              yield Buffer.alloc(512 - (position % 512), 0);
+              yield new Uint8Array(512 - (position % 512));
             }
           }
           break;

@@ -18,7 +18,8 @@ import {
   EntryItem,
   ExtractedEntryItem,
   ExtractedFileItem,
-} from './types';
+} from './types.ts';
+import { getBytes, validateLength } from './bytes.ts';
 
 // Tar specification: name max 100 bytes, prefix max 155 bytes
 export const MAX_NAME = 100;
@@ -39,15 +40,6 @@ const getUName = (
   return (
     candidateName ?? (reflectStat === 'all' ? candidateId.toString() : 'root')
   );
-};
-
-/**
- * Get a buffer from the string or Buffer
- * @param data - The data to get a buffer from
- * @returns A buffer
- */
-export const getBuffer = (data: Buffer | string) => {
-  return Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8');
 };
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -118,7 +110,7 @@ export const createDirectoryItem = async (
  */
 export const createFileItem = async (
   path: string,
-  content: string | Buffer,
+  content: string | Uint8Array,
   options?: CreateItemOptions,
   signal?: AbortSignal
 ): Promise<FileItem> => {
@@ -169,18 +161,21 @@ export const createReadableFileItem = async (
   const gname = options?.gname ?? 'root';
 
   // When length is not provided, calculate the total size by reading all chunks
+  signal?.throwIfAborted();
   let length = options?.length;
-  if (!length) {
+  if (length !== undefined) validateLength(length);
+  if (length === undefined) {
     // Calculate the total size by reading all chunks
-    const chunks: Buffer[] = [];
+    const chunks: Uint8Array[] = [];
     length = 0;
 
     // Collect all chunks to calculate size
     for await (const chunk of readable) {
       signal?.throwIfAborted();
-      const buffer = getBuffer(chunk);
+      const buffer = getBytes(chunk);
       chunks.push(buffer);
       length += buffer.length;
+      validateLength(length);
     }
 
     // Create a FileItem
@@ -194,9 +189,11 @@ export const createReadableFileItem = async (
       gid,
       date,
       content: {
-        kind: 'readable',
+        kind: 'generator',
         length,
-        readable: Readable.from(chunks, { signal }),
+        generator: (async function* () {
+          yield* chunks;
+        })(),
       },
     };
   } else {
@@ -229,7 +226,7 @@ export const createReadableFileItem = async (
  */
 export const createGeneratorFileItem = async (
   path: string,
-  generator: AsyncGenerator<Buffer, void, unknown>,
+  generator: AsyncIterable<Uint8Array>,
   options?: CreateReadableFileItemOptions,
   signal?: AbortSignal
 ): Promise<FileItem> => {
@@ -242,18 +239,21 @@ export const createGeneratorFileItem = async (
   const gname = options?.gname ?? 'root';
 
   // When length is not provided, calculate the total size by reading all chunks
+  signal?.throwIfAborted();
   let length = options?.length;
-  if (!length) {
+  if (length !== undefined) validateLength(length);
+  if (length === undefined) {
     // Calculate the total size by reading all chunks
-    const chunks: Buffer[] = [];
+    const chunks: Uint8Array[] = [];
     length = 0;
 
     // Collect all chunks to calculate size
     for await (const chunk of generator) {
       signal?.throwIfAborted();
-      const buffer = getBuffer(chunk);
+      const buffer = getBytes(chunk);
       chunks.push(buffer);
       length += buffer.length;
+      validateLength(length);
     }
 
     // Create a FileItem
@@ -267,9 +267,11 @@ export const createGeneratorFileItem = async (
       gid,
       date,
       content: {
-        kind: 'readable',
+        kind: 'generator',
         length,
-        readable: Readable.from(chunks, { signal }),
+        generator: (async function* () {
+          yield* chunks;
+        })(),
       },
     };
   } else {
