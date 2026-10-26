@@ -30,7 +30,6 @@ try {
     'npm',
     [
       'install',
-      '--ignore-scripts',
       '--no-audit',
       '--no-fund',
       join(root, `artifacts/tar-vern-${manifest.version}.tgz`),
