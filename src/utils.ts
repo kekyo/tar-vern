@@ -236,7 +236,7 @@ export const createGeneratorFileItem = async (
  * @param path - Explicit path inside the archive; the Blob name is not inferred.
  * @param blob - Blob or File whose size is used as the declared byte length.
  * @param options - Metadata overrides. A File's lastModified is the default date.
- * @param signal - Abort signal for entry creation and subsequent input operations.
+ * @param signal - Abort entry creation. Pass a signal to the packer to cancel subsequent reads.
  * @returns An entry connected to blob.stream().
  * @remarks The stream is consumed as tar output is read. A plain Blob uses the normal metadata defaults.
  */

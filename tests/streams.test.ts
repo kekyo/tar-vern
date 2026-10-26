@@ -27,6 +27,60 @@ const collect = async (stream: ReadableStream<Uint8Array>) => {
 };
 
 describe('Web Streams', () => {
+  it('rejects pre-aborted operations without reading entries or byte input', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('already stopped'));
+    let reads = 0;
+    const source = new ReadableStream<Uint8Array>(
+      {
+        pull() {
+          reads++;
+        },
+      },
+      { highWaterMark: 0 }
+    );
+    const items = async function* () {
+      reads++;
+      yield await createFileItem('file', 'data');
+    };
+    await expect(
+      createTarPacker(items(), 'none', controller.signal).getReader().read()
+    ).rejects.toThrow('already stopped');
+    await expect(
+      createTarExtractor(source, 'none', controller.signal).next()
+    ).rejects.toThrow('already stopped');
+    expect(reads).toBe(0);
+    expect(source.locked).toBe(false);
+  });
+
+  it('interrupts a pending next when the parent iterator is explicitly returned', async () => {
+    let wake!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      wake = resolve;
+    });
+    let cancelled = false;
+    const source = new ReadableStream<Uint8Array>(
+      {
+        pull() {
+          wake();
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 }
+    );
+    const archive = createTarExtractor(source);
+    const rejection = expect(archive.next()).rejects.toThrow(
+      /enumeration ended/
+    );
+    await waiting;
+    expect((await archive.return()).done).toBe(true);
+    await rejection;
+    expect(cancelled).toBe(true);
+    expect(source.locked).toBe(false);
+  });
+
   it('packs into a Web Stream and parses headers and content across single-byte chunks', async () => {
     const data = await collect(
       createTarPacker(

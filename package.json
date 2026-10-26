@@ -58,7 +58,9 @@
     "pack": "npm run build && screw-up pack --pack-destination artifacts/",
     "example:browser": "vite --config examples/browser/vite.config.ts",
     "build:example": "vite build --config examples/browser/vite.config.ts",
-    "test:browser": "npm run build && node scripts/browser-test.mjs"
+    "test:browser": "npm run build && node scripts/browser-test.mjs",
+    "test:package": "npm run pack && node scripts/package-test.mjs",
+    "typecheck:browser": "tsc -p examples/browser/tsconfig.json"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
@@ -72,5 +74,8 @@
     "vite": ">=5.0.0",
     "vite-plugin-dts": ">=3.0.0",
     "vitest": ">=1.0.0"
+  },
+  "allowScripts": {
+    "esbuild": true
   }
 }

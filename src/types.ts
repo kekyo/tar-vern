@@ -7,9 +7,10 @@
  * Base interface for all entry item contents
  */
 export interface EntryItemContentBase {
+  /** The source kind. */
   readonly kind: 'generator' | 'readable';
   /**
-   * The length of the item
+   * Exact content size in bytes (0 through 8589934591).
    */
   readonly length: number;
 }
@@ -18,9 +19,10 @@ export interface EntryItemContentBase {
  * Interface for all entry item contents that are generators
  */
 export interface EntryItemGeneratorContent extends EntryItemContentBase {
+  /** Identifies an asynchronous byte iterable. */
   readonly kind: 'generator';
   /**
-   * The generator function
+   * The asynchronous byte iterable, consumed once.
    */
   readonly generator: AsyncIterable<Uint8Array>;
 }
@@ -29,6 +31,7 @@ export interface EntryItemGeneratorContent extends EntryItemContentBase {
  * Interface for all entry item contents that are readable streams
  */
 export interface EntryItemReadableContent extends EntryItemContentBase {
+  /** Identifies a Web Stream of bytes. */
   readonly kind: 'readable';
   /**
    * The readable stream
@@ -48,6 +51,7 @@ export type EntryItemContent =
  * Base interface for all entry items
  */
 export interface EntryItemBase {
+  /** Whether this entry represents a regular file or a directory. */
   readonly kind: 'file' | 'directory';
   /**
    * The path of the item
@@ -85,6 +89,7 @@ export interface EntryItemBase {
  * Interface for all file entry items
  */
 export interface FileItem extends EntryItemBase {
+  /** Identifies a regular file. */
   readonly kind: 'file';
   /**
    * The content of the item
@@ -96,6 +101,7 @@ export interface FileItem extends EntryItemBase {
  * Interface for all directory entry items
  */
 export interface DirectoryItem extends EntryItemBase {
+  /** Identifies a directory. */
   readonly kind: 'directory';
 }
 
@@ -110,6 +116,7 @@ export type EntryItem = FileItem | DirectoryItem;
  * Interface for extracted all file entry items
  */
 export interface ExtractedFileItem extends EntryItemBase {
+  /** Identifies a regular file with single-use content. */
   readonly kind: 'file';
   /**
    * Get the file content once as text, bytes, or a Web Stream
@@ -129,6 +136,7 @@ export interface ExtractedFileItem extends EntryItemBase {
  * Interface for extracted all directory entry items
  */
 export interface ExtractedDirectoryItem extends EntryItemBase {
+  /** Identifies a directory. */
   readonly kind: 'directory';
 }
 
