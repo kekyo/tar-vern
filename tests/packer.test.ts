@@ -18,14 +18,15 @@ import {
 import { spawn } from 'child_process';
 import { createGzip } from 'zlib';
 import dayjs from 'dayjs';
-import { createTarPacker } from '../src/packer';
-import { CompressionTypes, EntryItem } from '../src/types';
+import { createTarPacker } from '../src/packer.ts';
+import { CompressionTypes, EntryItem } from '../src/types.ts';
+import { createReadableFileItem, createDirectoryItem } from '../src/utils.ts';
 import {
-  createReadableFileItem,
+  createReadDirectoryItem,
   createReadFileItem,
-  createDirectoryItem,
   storeReaderToFile,
-} from '../src/utils';
+} from '../src/node.ts';
+import { createTarPackerWithGzip } from '../src/node-gzip.ts';
 
 describe('Tar packer test', () => {
   const tempBaseDir = join(
@@ -78,10 +79,13 @@ describe('Tar packer test', () => {
     return runCommand('tar', ['-zxvf', tarPath, '-C', storeToPath]);
   };
 
-  const storeReaderToGzipFile = (reader: Readable, path: string) => {
+  const storeReaderToGzipFile = (
+    reader: ReadableStream<Uint8Array>,
+    path: string
+  ) => {
     const gzip = createGzip();
     const writer = createWriteStream(path);
-    reader.pipe(gzip).pipe(writer);
+    Readable.fromWeb(reader).pipe(gzip).pipe(writer);
     return new Promise<void>((res, rej) => {
       writer.on('finish', res);
       writer.on('error', rej);
@@ -450,7 +454,9 @@ describe('Tar packer test', () => {
         content: {
           kind: 'readable' as const,
           length: testContent.length,
-          readable: Readable.from([testContent]),
+          readable: Readable.toWeb(
+            Readable.from([new TextEncoder().encode(testContent)])
+          ),
         },
       };
     };
@@ -483,7 +489,9 @@ describe('Tar packer test', () => {
 
   it('should work with createReadableItem helper', async () => {
     const testContent = 'Content from readable item helper!';
-    const stream = Readable.from([testContent]);
+    const stream = Readable.toWeb(
+      Readable.from([new TextEncoder().encode(testContent)])
+    );
 
     const generator = async function* () {
       const fileItem = await createReadableFileItem('helper-test.txt', stream, {
@@ -625,7 +633,7 @@ describe('Tar packer test', () => {
 
   it('should work with createDirectoryItem helper with options', async () => {
     const generator = async function* () {
-      const dirItem = await createDirectoryItem('custom-dir', 'none', {
+      const dirItem = await createDirectoryItem('custom-dir', {
         mode: 0o750,
         uname: 'diruser',
         gname: 'dirgroup',
@@ -669,8 +677,12 @@ describe('Tar packer test', () => {
     const originalStat = statSync(testDirPath);
 
     const generator = async function* () {
-      // Call createDirectoryItem with filesystem path and default reflectStat ('exceptName') - should use stat info
-      const dirItem = await createDirectoryItem(testDirPath, 'exceptName');
+      // Read the directory metadata from its filesystem path.
+      const dirItem = await createReadDirectoryItem(
+        testDirPath,
+        testDirPath,
+        'exceptName'
+      );
       // Override the archive path
       const modifiedDirItem = { ...dirItem, path: 'reflected-dir' };
       yield modifiedDirItem;
@@ -719,8 +731,8 @@ describe('Tar packer test', () => {
     chmodSync(testDirPath, 0o700);
 
     const generator = async function* () {
-      // Call createDirectoryItem with reflectStat 'none' - should use default values
-      const dirItem = await createDirectoryItem('no-reflected-dir', 'none');
+      // Construct a directory without reflecting filesystem metadata.
+      const dirItem = await createDirectoryItem('no-reflected-dir');
       yield dirItem;
     };
     const packer = createTarPacker(generator());
@@ -846,7 +858,7 @@ describe('Tar packer test', () => {
 
     // Use createTarPacker with CompressionTypes.gzip
     const compressionType: CompressionTypes = 'gzip';
-    const packer = createTarPacker(generator(), compressionType);
+    const packer = createTarPackerWithGzip(generator(), compressionType);
 
     // Store the compressed packer stream to a .tgz file
     const tgzPath = join(testDir, 'builtin-compressed.tgz');
@@ -929,10 +941,10 @@ describe('Tar packer test', () => {
     it('should handle exception in readable stream', async () => {
       const generator = async function* () {
         // Create a readable stream that will error immediately
-        const errorStream = new Readable({
-          read() {
+        const errorStream = new ReadableStream<Uint8Array>({
+          pull(controller) {
             // Emit error immediately instead of using nextTick
-            this.emit('error', new Error('Readable stream exception'));
+            controller.error(new Error('Readable stream exception'));
           },
         });
 

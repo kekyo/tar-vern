@@ -18,12 +18,12 @@ import {
 } from 'fs';
 import { spawn } from 'child_process';
 import dayjs from 'dayjs';
+import { createTarPacker, createTarExtractor } from '../src/index.ts';
+import { createEntryItemGenerator, extractTo } from '../src/node.ts';
 import {
-  createTarPacker,
-  createTarExtractor,
-  createEntryItemGenerator,
-  extractTo,
-} from '../src';
+  createTarPackerWithGzip,
+  createTarExtractorWithGzip,
+} from '../src/node-gzip.ts';
 
 describe('Integration tests', () => {
   const tempBaseDir = join(
@@ -484,7 +484,7 @@ describe('Integration tests', () => {
 
     // Pack with tar-vern (gzip)
     const generator = createEntryItemGenerator(sourceDir, allPaths, true);
-    const packer = createTarPacker(generator, 'gzip');
+    const packer = createTarPackerWithGzip(generator, 'gzip');
 
     const tgzPath = join(testDir, 'test.tar.gz');
     const chunks: Buffer[] = [];
@@ -545,7 +545,7 @@ describe('Integration tests', () => {
     mkdirSync(extractDir, { recursive: true });
 
     const stream = createReadStream(tgzPath);
-    const extractor = createTarExtractor(stream, 'gzip');
+    const extractor = createTarExtractorWithGzip(stream, 'gzip');
     await extractTo(extractor, extractDir);
 
     // Compare directories

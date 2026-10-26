@@ -2,7 +2,7 @@ import {
   createFileItem,
   createTarPacker,
   createTarExtractor,
-} from '../dist/index.js';
+} from '../dist/index.mjs';
 
 const entries = async function* () {
   yield await createFileItem('hello.txt', 'Hello from tar-vern!');

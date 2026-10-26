@@ -18,10 +18,9 @@ import dayjs from 'dayjs';
 import {
   createTarPacker,
   createTarExtractor,
-  createEntryItemGenerator,
-  extractTo,
   EntryItem,
-} from '../src';
+} from '../src/index.ts';
+import { createEntryItemGenerator, extractTo } from '../src/node.ts';
 
 describe('Helper functions test', () => {
   const tempBaseDir = join(

@@ -23,7 +23,7 @@ describe('portable bytes and declared lengths', () => {
       createTarPacker(entries(...items))
     )) {
       if (item.kind === 'file')
-        extracted.push([item.path, await item.getContent('buffer')]);
+        extracted.push([item.path, await item.getContent('bytes')]);
     }
     expect(extracted.map(([path]) => path)).toEqual(
       items.map((item) => item.path)
@@ -95,7 +95,7 @@ describe('portable bytes and declared lengths', () => {
       createTarPacker(entries(item))
     )) {
       if (file.kind === 'file')
-        expect(Array.from(await file.getContent('buffer'))).toEqual([255, 0]);
+        expect(Array.from(await file.getContent('bytes'))).toEqual([255, 0]);
     }
   });
 });

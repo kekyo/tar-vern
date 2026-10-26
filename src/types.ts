@@ -3,8 +3,6 @@
 // Under MIT.
 // https://github.com/kekyo/tar-vern/
 
-import { Readable } from 'stream';
-
 /**
  * Base interface for all entry item contents
  */
@@ -35,7 +33,7 @@ export interface EntryItemReadableContent extends EntryItemContentBase {
   /**
    * The readable stream
    */
-  readonly readable: Readable;
+  readonly readable: ReadableStream<Uint8Array>;
 }
 
 /**
@@ -114,16 +112,17 @@ export type EntryItem = FileItem | DirectoryItem;
 export interface ExtractedFileItem extends EntryItemBase {
   readonly kind: 'file';
   /**
-   * Get the file content as string, buffer, or readable stream
-   * @param type - The type of data to retrieve ('string', 'buffer', or 'readable')
-   * @returns The file content as string, buffer, or readable stream
+   * Get the file content once as text, bytes, or a Web Stream
+   * @remarks Consume or cancel a returned stream before advancing the archive. Text and bytes collect the entire file.
+   * @param type - The type of data to retrieve ('string', 'bytes', or 'readable')
+   * @returns The file content in the requested form
    */
   getContent(type: 'string'): Promise<string>;
-  getContent(type: 'buffer'): Promise<Buffer>;
-  getContent(type: 'readable'): Promise<Readable>;
+  getContent(type: 'bytes'): Promise<Uint8Array>;
+  getContent(type: 'readable'): Promise<ReadableStream<Uint8Array>>;
   getContent(
-    type: 'string' | 'buffer' | 'readable'
-  ): Promise<string | Buffer | Readable>;
+    type: 'string' | 'bytes' | 'readable'
+  ): Promise<string | Uint8Array | ReadableStream<Uint8Array>>;
 }
 
 /**
@@ -139,14 +138,6 @@ export interface ExtractedDirectoryItem extends EntryItemBase {
 export type ExtractedEntryItem = ExtractedFileItem | ExtractedDirectoryItem;
 
 ///////////////////////////////////////////////////////////////////////////////////
-
-/**
- * The type of stat reflection
- * - all: Reflect all stats
- * - exceptName: Reflect all stats except uname and gname
- * - none: Do not reflect any stats
- */
-export type ReflectStats = 'all' | 'exceptName' | 'none';
 
 /**
  * The type of compression
@@ -184,17 +175,6 @@ export interface CreateItemOptions {
    * The date of the item
    */
   readonly date?: Date;
-}
-
-/**
- * Options for creating a directory item
- */
-export interface CreateDirectoryItemOptions extends CreateItemOptions {
-  /**
-   * The real directory path
-   * @remarks If provided, will get the stats from the directory path
-   */
-  readonly directoryPath?: string;
 }
 
 /**
