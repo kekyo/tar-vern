@@ -28,7 +28,6 @@ export default defineConfig({
       name: 'tar-vern',
       fileName: (format, entryName) =>
         `${entryName}.${format === 'es' ? 'mjs' : 'cjs'}`,
-      formats: ['es', 'cjs'],
     },
     rollupOptions: {
       external: (id) => id.startsWith('node:'),
