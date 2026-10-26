@@ -4,19 +4,36 @@
 // https://github.com/kekyo/tar-vern/
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { mkdirSync, writeFileSync, readFileSync, existsSync, statSync } from 'fs';
+import {
+  mkdirSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  statSync,
+} from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createReadStream } from 'fs';
 import dayjs from 'dayjs';
-import { createTarPacker, createTarExtractor, createEntryItemGenerator, extractTo, EntryItem } from '../src';
+import {
+  createTarPacker,
+  createTarExtractor,
+  createEntryItemGenerator,
+  extractTo,
+  EntryItem,
+} from '../src';
 
 describe('Helper functions test', () => {
-  const tempBaseDir = join(tmpdir(), 'tar-vern-test', 'utils', dayjs().format('YYYYMMDD_HHmmssSSS'));
+  const tempBaseDir = join(
+    tmpdir(),
+    'tar-vern-test',
+    'utils',
+    dayjs().format('YYYYMMDD_HHmmssSSS')
+  );
 
   let testDir: string;
 
-  beforeEach(fn => {
+  beforeEach((fn) => {
     testDir = join(tempBaseDir, fn.task.name);
     mkdirSync(testDir, { recursive: true });
   });
@@ -26,10 +43,10 @@ describe('Helper functions test', () => {
       // Create test files and directories
       const sourceDir = join(testDir, 'source');
       mkdirSync(sourceDir, { recursive: true });
-      
+
       writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
       writeFileSync(join(sourceDir, 'file2.txt'), 'Content 2');
-      
+
       const subDir = join(sourceDir, 'subdir');
       mkdirSync(subDir, { recursive: true });
       writeFileSync(join(subDir, 'file3.txt'), 'Content 3');
@@ -37,23 +54,27 @@ describe('Helper functions test', () => {
       // Test createEntryItemGenerator
       const relativePaths = [
         'file1.txt',
-        'file2.txt', 
+        'file2.txt',
         'subdir',
-        'subdir/file3.txt'
+        'subdir/file3.txt',
       ];
 
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(sourceDir, relativePaths, true)) {
+      for await (const entry of createEntryItemGenerator(
+        sourceDir,
+        relativePaths,
+        true
+      )) {
         entries.push(entry);
       }
 
       // Verify entries
       expect(entries).toHaveLength(4);
-      
-      const file1 = entries.find(e => e.path.endsWith('file1.txt'));
-      const file2 = entries.find(e => e.path.endsWith('file2.txt'));
-      const dir = entries.find(e => e.path.endsWith('subdir'));
-      const file3 = entries.find(e => e.path.endsWith('file3.txt'));
+
+      const file1 = entries.find((e) => e.path.endsWith('file1.txt'));
+      const file2 = entries.find((e) => e.path.endsWith('file2.txt'));
+      const dir = entries.find((e) => e.path.endsWith('subdir'));
+      const file3 = entries.find((e) => e.path.endsWith('file3.txt'));
 
       expect(file1?.kind).toBe('file');
       expect(file2?.kind).toBe('file');
@@ -62,13 +83,14 @@ describe('Helper functions test', () => {
     });
 
     it('should handle non-existent paths gracefully', async () => {
-      const relativePaths = [
-        'nonexistent.txt',
-        'also-nonexistent'
-      ];
+      const relativePaths = ['nonexistent.txt', 'also-nonexistent'];
 
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(testDir, relativePaths, true)) {
+      for await (const entry of createEntryItemGenerator(
+        testDir,
+        relativePaths,
+        true
+      )) {
         entries.push(entry);
       }
 
@@ -85,14 +107,19 @@ describe('Helper functions test', () => {
 
       // Test with 'all' reflectStat
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(sourceDir, ['test.txt'], true, 'all')) {
+      for await (const entry of createEntryItemGenerator(
+        sourceDir,
+        ['test.txt'],
+        true,
+        'all'
+      )) {
         entries.push(entry);
       }
 
       expect(entries).toHaveLength(1);
       const fileEntry = entries[0];
       expect(fileEntry.kind).toBe('file');
-      
+
       // Should have reflected stats
       const stats = statSync(testFile);
       expect(fileEntry.mode).toBe(stats.mode);
@@ -104,29 +131,33 @@ describe('Helper functions test', () => {
       // Create test directory structure
       const sourceDir = join(testDir, 'auto-collect');
       mkdirSync(sourceDir, { recursive: true });
-      
+
       writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
       writeFileSync(join(sourceDir, 'file2.txt'), 'Content 2');
-      
+
       const subDir = join(sourceDir, 'subdir');
       mkdirSync(subDir, { recursive: true });
       writeFileSync(join(subDir, 'file3.txt'), 'Content 3');
-      
+
       const nestedDir = join(subDir, 'nested');
       mkdirSync(nestedDir, { recursive: true });
       writeFileSync(join(nestedDir, 'file4.txt'), 'Content 4');
 
       // Test createEntryItemGenerator without relativePaths
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(sourceDir, undefined, true)) {
+      for await (const entry of createEntryItemGenerator(
+        sourceDir,
+        undefined,
+        true
+      )) {
         entries.push(entry);
       }
 
       // Should collect all files and directories recursively
       expect(entries.length).toBeGreaterThan(0);
-      
+
       // Verify we got all expected entries
-      const paths = entries.map(e => e.path).sort();
+      const paths = entries.map((e) => e.path).sort();
       expect(paths).toContain('file1.txt');
       expect(paths).toContain('file2.txt');
       expect(paths).toContain('subdir');
@@ -135,9 +166,11 @@ describe('Helper functions test', () => {
       expect(paths).toContain(join('subdir', 'nested', 'file4.txt'));
 
       // Verify entry types
-      const file1 = entries.find(e => e.path === 'file1.txt');
-      const dir = entries.find(e => e.path === 'subdir');
-      const nestedFile = entries.find(e => e.path === join('subdir', 'nested', 'file4.txt'));
+      const file1 = entries.find((e) => e.path === 'file1.txt');
+      const dir = entries.find((e) => e.path === 'subdir');
+      const nestedFile = entries.find(
+        (e) => e.path === join('subdir', 'nested', 'file4.txt')
+      );
 
       expect(file1?.kind).toBe('file');
       expect(dir?.kind).toBe('directory');
@@ -151,13 +184,16 @@ describe('Helper functions test', () => {
       writeFileSync(join(sourceDir, 'file2.txt'), 'Content 2');
 
       const controller = new AbortController();
-      const relativePaths = [
-        'file1.txt',
-        'file2.txt'
-      ];
+      const relativePaths = ['file1.txt', 'file2.txt'];
 
-      const generator = createEntryItemGenerator(sourceDir, relativePaths, true, 'exceptName', controller.signal);
-      
+      const generator = createEntryItemGenerator(
+        sourceDir,
+        relativePaths,
+        true,
+        'exceptName',
+        controller.signal
+      );
+
       // Get first entry
       const { value: entry1 } = await generator.next();
       expect(entry1?.kind).toBe('file');
@@ -173,10 +209,10 @@ describe('Helper functions test', () => {
       // Create test files and directories
       const sourceDir = join(testDir, 'exclude-dirs');
       mkdirSync(sourceDir, { recursive: true });
-      
+
       writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
       writeFileSync(join(sourceDir, 'file2.txt'), 'Content 2');
-      
+
       const subDir = join(sourceDir, 'subdir');
       mkdirSync(subDir, { recursive: true });
       writeFileSync(join(subDir, 'file3.txt'), 'Content 3');
@@ -184,23 +220,27 @@ describe('Helper functions test', () => {
       // Test with includeDirectory = false
       const relativePaths = [
         'file1.txt',
-        'file2.txt', 
+        'file2.txt',
         'subdir',
-        'subdir/file3.txt'
+        'subdir/file3.txt',
       ];
 
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(sourceDir, relativePaths, false)) {
+      for await (const entry of createEntryItemGenerator(
+        sourceDir,
+        relativePaths,
+        false
+      )) {
         entries.push(entry);
       }
 
       // Should only have files, no directories
       expect(entries).toHaveLength(3);
-      
-      const file1 = entries.find(e => e.path.endsWith('file1.txt'));
-      const file2 = entries.find(e => e.path.endsWith('file2.txt'));
-      const file3 = entries.find(e => e.path.endsWith('file3.txt'));
-      const dir = entries.find(e => e.path.endsWith('subdir'));
+
+      const file1 = entries.find((e) => e.path.endsWith('file1.txt'));
+      const file2 = entries.find((e) => e.path.endsWith('file2.txt'));
+      const file3 = entries.find((e) => e.path.endsWith('file3.txt'));
+      const dir = entries.find((e) => e.path.endsWith('subdir'));
 
       expect(file1?.kind).toBe('file');
       expect(file2?.kind).toBe('file');
@@ -212,31 +252,30 @@ describe('Helper functions test', () => {
       // Create test files and directories
       const sourceDir = join(testDir, 'default-include');
       mkdirSync(sourceDir, { recursive: true });
-      
+
       writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
-      
+
       const subDir = join(sourceDir, 'subdir');
       mkdirSync(subDir, { recursive: true });
       writeFileSync(join(subDir, 'file2.txt'), 'Content 2');
 
-      const relativePaths = [
-        'file1.txt',
-        'subdir',
-        'subdir/file2.txt'
-      ];
+      const relativePaths = ['file1.txt', 'subdir', 'subdir/file2.txt'];
 
       // Test without specifying includeDirectory (should default to true)
       const entries: EntryItem[] = [];
-      for await (const entry of createEntryItemGenerator(sourceDir, relativePaths)) {
+      for await (const entry of createEntryItemGenerator(
+        sourceDir,
+        relativePaths
+      )) {
         entries.push(entry);
       }
 
       // Should include both files and directory
       expect(entries).toHaveLength(3);
-      
-      const file1 = entries.find(e => e.path.endsWith('file1.txt'));
-      const file2 = entries.find(e => e.path.endsWith('file2.txt'));
-      const dir = entries.find(e => e.path.endsWith('subdir'));
+
+      const file1 = entries.find((e) => e.path.endsWith('file1.txt'));
+      const file2 = entries.find((e) => e.path.endsWith('file2.txt'));
+      const dir = entries.find((e) => e.path.endsWith('subdir'));
 
       expect(file1?.kind).toBe('file');
       expect(file2?.kind).toBe('file');
@@ -249,10 +288,10 @@ describe('Helper functions test', () => {
       // Create source files
       const sourceDir = join(testDir, 'source');
       mkdirSync(sourceDir, { recursive: true });
-      
+
       writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
       writeFileSync(join(sourceDir, 'file2.txt'), 'Content 2');
-      
+
       const subDir = join(sourceDir, 'subdir');
       mkdirSync(subDir, { recursive: true });
       writeFileSync(join(subDir, 'file3.txt'), 'Content 3');
@@ -262,12 +301,16 @@ describe('Helper functions test', () => {
         'file1.txt',
         'file2.txt',
         'subdir',
-        'subdir/file3.txt'
+        'subdir/file3.txt',
       ];
 
-      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths, true);
+      const itemGenerator = createEntryItemGenerator(
+        sourceDir,
+        relativePaths,
+        true
+      );
       const packer = createTarPacker(itemGenerator);
-      
+
       // Read tar data into buffer
       const chunks: Buffer[] = [];
       for await (const chunk of packer) {
@@ -279,12 +322,14 @@ describe('Helper functions test', () => {
       const targetDir = join(testDir, 'target');
       mkdirSync(targetDir, { recursive: true });
 
-      const extractor = createTarExtractor(createReadStream(join(testDir, 'test.tar')));
-      
+      const extractor = createTarExtractor(
+        createReadStream(join(testDir, 'test.tar'))
+      );
+
       // Write tar data to file first
       const tarPath = join(testDir, 'test.tar');
       writeFileSync(tarPath, tarData);
-      
+
       // Extract
       const extractorStream = createTarExtractor(createReadStream(tarPath));
       await extractTo(extractorStream, targetDir);
@@ -312,7 +357,7 @@ describe('Helper functions test', () => {
       // Create a nested file structure in tar
       const sourceDir = join(testDir, 'nested-source');
       mkdirSync(sourceDir, { recursive: true });
-      
+
       const deepDir = join(sourceDir, 'level1', 'level2', 'level3');
       mkdirSync(deepDir, { recursive: true });
       writeFileSync(join(deepDir, 'deep-file.txt'), 'Deep content');
@@ -321,12 +366,16 @@ describe('Helper functions test', () => {
         'level1',
         'level1/level2',
         'level1/level2/level3',
-        'level1/level2/level3/deep-file.txt'
+        'level1/level2/level3/deep-file.txt',
       ];
 
-      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths, true);
+      const itemGenerator = createEntryItemGenerator(
+        sourceDir,
+        relativePaths,
+        true
+      );
       const packer = createTarPacker(itemGenerator);
-      
+
       // Create tar file
       const tarPath = join(testDir, 'nested.tar');
       const chunks: Buffer[] = [];
@@ -341,7 +390,13 @@ describe('Helper functions test', () => {
       await extractTo(extractorStream, targetDir);
 
       // Verify nested structure
-      const extractedFile = join(targetDir, 'level1', 'level2', 'level3', 'deep-file.txt');
+      const extractedFile = join(
+        targetDir,
+        'level1',
+        'level2',
+        'level3',
+        'deep-file.txt'
+      );
       expect(existsSync(extractedFile)).toBe(true);
       expect(readFileSync(extractedFile, 'utf8')).toBe('Deep content');
     });
@@ -353,14 +408,15 @@ describe('Helper functions test', () => {
       writeFileSync(join(sourceDir, 'file1.txt'), 'Content 1');
       writeFileSync(join(sourceDir, 'file2.txt'), 'Content 2');
 
-      const relativePaths = [
-        'file1.txt',
-        'file2.txt'
-      ];
+      const relativePaths = ['file1.txt', 'file2.txt'];
 
-      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths, true);
+      const itemGenerator = createEntryItemGenerator(
+        sourceDir,
+        relativePaths,
+        true
+      );
       const packer = createTarPacker(itemGenerator);
-      
+
       const tarPath = join(testDir, 'abort.tar');
       const chunks: Buffer[] = [];
       for await (const chunk of packer) {
@@ -377,8 +433,9 @@ describe('Helper functions test', () => {
       controller.abort();
 
       // Should throw when aborted
-      await expect(extractTo(extractorStream, targetDir, controller.signal))
-        .rejects.toThrow();
+      await expect(
+        extractTo(extractorStream, targetDir, controller.signal)
+      ).rejects.toThrow();
     });
   });
 
@@ -387,10 +444,10 @@ describe('Helper functions test', () => {
       // Create source structure
       const sourceDir = join(testDir, 'integration-source');
       mkdirSync(sourceDir, { recursive: true });
-      
+
       writeFileSync(join(sourceDir, 'readme.txt'), 'This is a readme');
       writeFileSync(join(sourceDir, 'config.json'), '{"name": "test"}');
-      
+
       const docsDir = join(sourceDir, 'docs');
       mkdirSync(docsDir, { recursive: true });
       writeFileSync(join(docsDir, 'guide.md'), '# Guide\nThis is a guide');
@@ -400,12 +457,17 @@ describe('Helper functions test', () => {
         'readme.txt',
         'config.json',
         'docs',
-        'docs/guide.md'
+        'docs/guide.md',
       ];
 
-      const itemGenerator = createEntryItemGenerator(sourceDir, relativePaths, true, 'exceptName');
+      const itemGenerator = createEntryItemGenerator(
+        sourceDir,
+        relativePaths,
+        true,
+        'exceptName'
+      );
       const packer = createTarPacker(itemGenerator);
-      
+
       const tarPath = join(testDir, 'integration.tar');
       const chunks: Buffer[] = [];
       for await (const chunk of packer) {
@@ -424,9 +486,15 @@ describe('Helper functions test', () => {
       expect(existsSync(join(targetDir, 'docs'))).toBe(true);
       expect(existsSync(join(targetDir, 'docs', 'guide.md'))).toBe(true);
 
-      expect(readFileSync(join(targetDir, 'readme.txt'), 'utf8')).toBe('This is a readme');
-      expect(readFileSync(join(targetDir, 'config.json'), 'utf8')).toBe('{"name": "test"}');
-      expect(readFileSync(join(targetDir, 'docs', 'guide.md'), 'utf8')).toBe('# Guide\nThis is a guide');
+      expect(readFileSync(join(targetDir, 'readme.txt'), 'utf8')).toBe(
+        'This is a readme'
+      );
+      expect(readFileSync(join(targetDir, 'config.json'), 'utf8')).toBe(
+        '{"name": "test"}'
+      );
+      expect(readFileSync(join(targetDir, 'docs', 'guide.md'), 'utf8')).toBe(
+        '# Guide\nThis is a guide'
+      );
 
       expect(statSync(join(targetDir, 'docs')).isDirectory()).toBe(true);
     });

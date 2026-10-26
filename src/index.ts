@@ -14,5 +14,5 @@ export {
   createReadFileItem,
   storeReaderToFile,
   createEntryItemGenerator,
-  extractTo
+  extractTo,
 } from './utils';

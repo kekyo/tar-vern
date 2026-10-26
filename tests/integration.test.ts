@@ -6,13 +6,32 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { tmpdir } from 'os';
 import { join, relative, dirname } from 'path';
-import { createReadStream, mkdirSync, readFileSync, writeFileSync, statSync, rmSync, existsSync, readdirSync } from 'fs';
+import {
+  createReadStream,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  statSync,
+  rmSync,
+  existsSync,
+  readdirSync,
+} from 'fs';
 import { spawn } from 'child_process';
 import dayjs from 'dayjs';
-import { createTarPacker, createTarExtractor, createEntryItemGenerator, extractTo } from '../src';
+import {
+  createTarPacker,
+  createTarExtractor,
+  createEntryItemGenerator,
+  extractTo,
+} from '../src';
 
 describe('Integration tests', () => {
-  const tempBaseDir = join(tmpdir(), 'tar-vern-test', 'integration', dayjs().format('YYYYMMDD_HHmmssSSS'));
+  const tempBaseDir = join(
+    tmpdir(),
+    'tar-vern-test',
+    'integration',
+    dayjs().format('YYYYMMDD_HHmmssSSS')
+  );
   let testDir: string;
   let originalUmask: number;
 
@@ -28,29 +47,37 @@ describe('Integration tests', () => {
     process.umask(originalUmask);
   });
 
-  const runCommand = (command: string, args: string[], cwd?: string): Promise<string> => {
+  const runCommand = (
+    command: string,
+    args: string[],
+    cwd?: string
+  ): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const proc = spawn(command, args, { 
+      const proc = spawn(command, args, {
         cwd: cwd || testDir,
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
       });
-      
+
       let stdout = '';
       let stderr = '';
-      
+
       proc.stdout?.on('data', (data) => {
         stdout += data.toString();
       });
-      
+
       proc.stderr?.on('data', (data) => {
         stderr += data.toString();
       });
-      
+
       proc.on('close', (code) => {
         if (code === 0) {
           resolve(stdout);
         } else {
-          reject(new Error(`Command failed (${code}): ${command} ${args.join(' ')}\nStdout: ${stdout}\nStderr: ${stderr}`));
+          reject(
+            new Error(
+              `Command failed (${code}): ${command} ${args.join(' ')}\nStdout: ${stdout}\nStderr: ${stderr}`
+            )
+          );
         }
       });
     });
@@ -94,49 +121,59 @@ describe('Integration tests', () => {
   // Create directory structure with given depth
   const createDirectoryPath = (baseDir: string, depth: number): string => {
     let currentPath = baseDir;
-    
+
     for (let i = 0; i < depth; i++) {
       const dirName = `dir${i}_${Math.random().toString(36).substring(2, 10)}`;
       currentPath = join(currentPath, dirName);
       const dirMode = getRandomDirectoryMode();
-      
+
       // With umask 0, we can set the exact mode directly
       mkdirSync(currentPath, { recursive: true, mode: dirMode });
     }
-    
+
     return currentPath;
   };
 
   // Parse tarball contents using tar -tvf and return structured data
-  const parseTarballContents = async (tarPath: string): Promise<Map<string, { mode: number; size: number; isDirectory: boolean }>> => {
-    const result = new Map<string, { mode: number; size: number; isDirectory: boolean }>();
-    
+  const parseTarballContents = async (
+    tarPath: string
+  ): Promise<
+    Map<string, { mode: number; size: number; isDirectory: boolean }>
+  > => {
+    const result = new Map<
+      string,
+      { mode: number; size: number; isDirectory: boolean }
+    >();
+
     try {
       const output = await runCommand('tar', ['-tvf', tarPath]);
-      const lines = output.trim().split('\n').filter(line => line.trim());
-      
+      const lines = output
+        .trim()
+        .split('\n')
+        .filter((line) => line.trim());
+
       console.log('Tarball contents:');
       for (const line of lines) {
         console.log(line);
         const parts = line.trim().split(/\s+/);
         if (parts.length < 9) continue;
-        
+
         const modeStr = parts[0];
         const sizeStr = parts[4];
         const pathInTar = parts.slice(8).join(' '); // Handle paths with spaces
-        
+
         // Skip root directory entries
         if (pathInTar === '.' || pathInTar === './') continue;
-        
+
         // Convert mode string (like "drwx------" or "-rw-r--r--") to octal
         let mode = 0;
         const isDirectory = modeStr[0] === 'd';
-        
+
         // Owner permissions
         if (modeStr[1] === 'r') mode |= 0o400;
         if (modeStr[2] === 'w') mode |= 0o200;
         if (modeStr[3] === 'x') mode |= 0o100;
-        // Group permissions  
+        // Group permissions
         if (modeStr[4] === 'r') mode |= 0o040;
         if (modeStr[5] === 'w') mode |= 0o020;
         if (modeStr[6] === 'x') mode |= 0o010;
@@ -144,12 +181,12 @@ describe('Integration tests', () => {
         if (modeStr[7] === 'r') mode |= 0o004;
         if (modeStr[8] === 'w') mode |= 0o002;
         if (modeStr[9] === 'x') mode |= 0o001;
-        
+
         const size = parseInt(sizeStr, 10) || 0;
-        
+
         result.set(pathInTar, { mode, size, isDirectory });
       }
-      
+
       return result;
     } catch (error) {
       console.error('Failed to parse tarball contents:', error);
@@ -158,26 +195,35 @@ describe('Integration tests', () => {
   };
 
   // Verify that tarball contents match original directory modes
-  const verifyTarballModes = async (tarPath: string, originalDir: string): Promise<boolean> => {
+  const verifyTarballModes = async (
+    tarPath: string,
+    originalDir: string
+  ): Promise<boolean> => {
     const tarContents = await parseTarballContents(tarPath);
-    
+
     for (const [pathInTar, tarInfo] of tarContents) {
       const originalPath = join(originalDir, pathInTar);
-      
+
       if (existsSync(originalPath)) {
         const originalStat = statSync(originalPath);
         const originalModeOctal = originalStat.mode & 0o7777;
-        
+
         if (originalModeOctal !== tarInfo.mode) {
-          console.error(`Mode mismatch for ${pathInTar}: original ${originalModeOctal.toString(8)} vs tarball ${tarInfo.mode.toString(8)}`);
+          console.error(
+            `Mode mismatch for ${pathInTar}: original ${originalModeOctal.toString(8)} vs tarball ${tarInfo.mode.toString(8)}`
+          );
           return false;
         } else {
-          console.log(`✓ Mode match for ${pathInTar}: ${originalModeOctal.toString(8)}`);
+          console.log(
+            `✓ Mode match for ${pathInTar}: ${originalModeOctal.toString(8)}`
+          );
         }
-        
+
         // Also verify file size for files
         if (!tarInfo.isDirectory && originalStat.size !== tarInfo.size) {
-          console.error(`Size mismatch for ${pathInTar}: original ${originalStat.size} vs tarball ${tarInfo.size}`);
+          console.error(
+            `Size mismatch for ${pathInTar}: original ${originalStat.size} vs tarball ${tarInfo.size}`
+          );
           return false;
         }
       } else {
@@ -185,21 +231,27 @@ describe('Integration tests', () => {
         return false;
       }
     }
-    
+
     return true;
   };
 
   // Compare two directory structures recursively
   const compareDirectories = (dir1: string, dir2: string): boolean => {
-    const walkDirectory = (dir: string, basePath: string = ''): Map<string, { size: number; mode: number; content?: Buffer }> => {
-      const result = new Map<string, { size: number; mode: number; content?: Buffer }>();
-      
+    const walkDirectory = (
+      dir: string,
+      basePath: string = ''
+    ): Map<string, { size: number; mode: number; content?: Buffer }> => {
+      const result = new Map<
+        string,
+        { size: number; mode: number; content?: Buffer }
+      >();
+
       const entries = readdirSync(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         const fullPath = join(dir, entry.name);
         const relativePath = basePath ? join(basePath, entry.name) : entry.name;
-        
+
         if (entry.isDirectory()) {
           const stats = statSync(fullPath);
           result.set(relativePath + '/', { size: 0, mode: stats.mode });
@@ -210,10 +262,14 @@ describe('Integration tests', () => {
         } else if (entry.isFile()) {
           const stats = statSync(fullPath);
           const content = readFileSync(fullPath);
-          result.set(relativePath, { size: stats.size, mode: stats.mode, content });
+          result.set(relativePath, {
+            size: stats.size,
+            mode: stats.mode,
+            content,
+          });
         }
       }
-      
+
       return result;
     };
 
@@ -222,7 +278,9 @@ describe('Integration tests', () => {
 
     // Compare number of entries
     if (entries1.size !== entries2.size) {
-      console.error(`Different number of entries: ${entries1.size} vs ${entries2.size}`);
+      console.error(
+        `Different number of entries: ${entries1.size} vs ${entries2.size}`
+      );
       return false;
     }
 
@@ -235,14 +293,16 @@ describe('Integration tests', () => {
       }
 
       if (info1.size !== info2.size) {
-        console.error(`Different size for ${path}: ${info1.size} vs ${info2.size}`);
+        console.error(
+          `Different size for ${path}: ${info1.size} vs ${info2.size}`
+        );
         return false;
       }
 
       // Compare file modes (permissions) - mask to get only permission bits
       const mode1 = info1.mode & 0o7777;
       const mode2 = info2.mode & 0o7777;
-      
+
       // For directories, tar command often sets 777 regardless of original mode
       // So we're lenient with directory mode comparison
       if (path.endsWith('/')) {
@@ -250,13 +310,17 @@ describe('Integration tests', () => {
         const hasMinPerms1 = (mode1 & 0o500) === 0o500; // owner r+x
         const hasMinPerms2 = (mode2 & 0o500) === 0o500; // owner r+x
         if (!hasMinPerms1 || !hasMinPerms2) {
-          console.error(`Directory ${path} missing required permissions: ${mode1.toString(8)} vs ${mode2.toString(8)}`);
+          console.error(
+            `Directory ${path} missing required permissions: ${mode1.toString(8)} vs ${mode2.toString(8)}`
+          );
           return false;
         }
       } else {
         // For files, expect exact mode match
         if (mode1 !== mode2) {
-          console.error(`Different mode for file ${path}: ${mode1.toString(8)} vs ${mode2.toString(8)}`);
+          console.error(
+            `Different mode for file ${path}: ${mode1.toString(8)} vs ${mode2.toString(8)}`
+          );
           return false;
         }
       }
@@ -284,15 +348,15 @@ describe('Integration tests', () => {
     for (let i = 0; i < fileCount; i++) {
       const depth = getRandomDepth();
       const targetDir = createDirectoryPath(sourceDir, depth);
-      
+
       const fileName = `file_${i}_${Math.random().toString(36).substring(2, 10)}.bin`;
       const filePath = join(targetDir, fileName);
       const fileSize = getRandomFileSize();
       const fileData = generateRandomData(fileSize);
-      
+
       const fileMode = getRandomFileMode();
       writeFileSync(filePath, fileData, { mode: fileMode });
-      
+
       // Store relative path from sourceDir
       const relativePath = relative(sourceDir, filePath);
       files.push(relativePath);
@@ -302,16 +366,18 @@ describe('Integration tests', () => {
     const walkDirs = (dir: string, basePath: string = ''): string[] => {
       const result: string[] = [];
       const entries = readdirSync(dir, { withFileTypes: true });
-      
+
       for (const entry of entries) {
         if (entry.isDirectory()) {
-          const relativePath = basePath ? join(basePath, entry.name) : entry.name;
+          const relativePath = basePath
+            ? join(basePath, entry.name)
+            : entry.name;
           result.push(relativePath);
           const subDirs = walkDirs(join(dir, entry.name), relativePath);
           result.push(...subDirs);
         }
       }
-      
+
       return result;
     };
 
@@ -321,7 +387,7 @@ describe('Integration tests', () => {
     // Pack with tar-vern
     const generator = createEntryItemGenerator(sourceDir, allPaths, true);
     const packer = createTarPacker(generator);
-    
+
     const tarPath = join(testDir, 'test.tar');
     const chunks: Buffer[] = [];
     for await (const chunk of packer) {
@@ -332,7 +398,7 @@ describe('Integration tests', () => {
     // Extract with tar command
     const extractDir = join(testDir, 'extracted');
     mkdirSync(extractDir, { recursive: true });
-    
+
     await runCommand('tar', ['-xf', tarPath], extractDir);
 
     // Compare directories
@@ -351,24 +417,31 @@ describe('Integration tests', () => {
     for (let i = 0; i < fileCount; i++) {
       const depth = getRandomDepth();
       const targetDir = createDirectoryPath(sourceDir, depth);
-      
+
       const fileName = `file_${i}_${Math.random().toString(36).substring(2, 10)}.bin`;
       const filePath = join(targetDir, fileName);
       const fileSize = getRandomFileSize();
       const fileData = generateRandomData(fileSize);
-      
+
       const fileMode = getRandomFileMode();
       writeFileSync(filePath, fileData, { mode: fileMode });
     }
 
     // Pack with tar command
     const tarPath = join(testDir, 'test.tar');
-    await runCommand('tar', ['--format=ustar', '-cf', tarPath, '-C', sourceDir, '.']);
+    await runCommand('tar', [
+      '--format=ustar',
+      '-cf',
+      tarPath,
+      '-C',
+      sourceDir,
+      '.',
+    ]);
 
     // Extract with tar-vern
     const extractDir = join(testDir, 'extracted');
     mkdirSync(extractDir, { recursive: true });
-    
+
     const stream = createReadStream(tarPath);
     const extractor = createTarExtractor(stream);
     await extractTo(extractor, extractDir);
@@ -390,26 +463,29 @@ describe('Integration tests', () => {
     for (let i = 0; i < fileCount; i++) {
       const depth = getRandomDepth();
       const targetDir = createDirectoryPath(sourceDir, depth);
-      
+
       const fileName = `file_${i}.txt`;
       const filePath = join(targetDir, fileName);
       const fileSize = getRandomFileSize();
       const fileData = generateRandomData(fileSize);
-      
+
       const fileMode = getRandomFileMode();
       writeFileSync(filePath, fileData, { mode: fileMode });
-      
+
       const relativePath = relative(sourceDir, filePath);
       files.push(relativePath);
     }
 
-    const allDirs = files.map(f => dirname(f)).filter(d => d !== '.').filter((v, i, a) => a.indexOf(v) === i);
+    const allDirs = files
+      .map((f) => dirname(f))
+      .filter((d) => d !== '.')
+      .filter((v, i, a) => a.indexOf(v) === i);
     const allPaths = [...allDirs, ...files];
 
     // Pack with tar-vern (gzip)
     const generator = createEntryItemGenerator(sourceDir, allPaths, true);
     const packer = createTarPacker(generator, 'gzip');
-    
+
     const tgzPath = join(testDir, 'test.tar.gz');
     const chunks: Buffer[] = [];
     for await (const chunk of packer) {
@@ -420,7 +496,7 @@ describe('Integration tests', () => {
     // Extract with tar command
     const extractDir = join(testDir, 'extracted');
     mkdirSync(extractDir, { recursive: true });
-    
+
     await runCommand('tar', ['-xzf', tgzPath], extractDir);
 
     // Verify tarball modes first
@@ -443,24 +519,31 @@ describe('Integration tests', () => {
     for (let i = 0; i < fileCount; i++) {
       const depth = getRandomDepth();
       const targetDir = createDirectoryPath(sourceDir, depth);
-      
+
       const fileName = `file_${i}.txt`;
       const filePath = join(targetDir, fileName);
       const fileSize = getRandomFileSize();
       const fileData = generateRandomData(fileSize);
-      
+
       const fileMode = getRandomFileMode();
       writeFileSync(filePath, fileData, { mode: fileMode });
     }
 
     // Pack with tar command (gzip)
     const tgzPath = join(testDir, 'test.tar.gz');
-    await runCommand('tar', ['--format=ustar', '-czf', tgzPath, '-C', sourceDir, '.']);
+    await runCommand('tar', [
+      '--format=ustar',
+      '-czf',
+      tgzPath,
+      '-C',
+      sourceDir,
+      '.',
+    ]);
 
     // Extract with tar-vern
     const extractDir = join(testDir, 'extracted');
     mkdirSync(extractDir, { recursive: true });
-    
+
     const stream = createReadStream(tgzPath);
     const extractor = createTarExtractor(stream, 'gzip');
     await extractTo(extractor, extractDir);
@@ -481,13 +564,13 @@ describe('Integration tests', () => {
     const fileSize = 1024 * 1024; // 1MB
     const fileData = generateRandomData(fileSize);
     const fileMode = getRandomFileMode();
-    
+
     writeFileSync(filePath, fileData, { mode: fileMode });
 
     // Pack with tar-vern
     const generator = createEntryItemGenerator(sourceDir, [fileName], true);
     const packer = createTarPacker(generator);
-    
+
     const tarPath = join(testDir, 'large.tar');
     const chunks: Buffer[] = [];
     for await (const chunk of packer) {
@@ -498,13 +581,13 @@ describe('Integration tests', () => {
     // Extract with tar command
     const extractDir = join(testDir, 'extracted');
     mkdirSync(extractDir, { recursive: true });
-    
+
     await runCommand('tar', ['-xf', tarPath], extractDir);
 
     // Compare files
     const originalData = readFileSync(filePath);
     const extractedData = readFileSync(join(extractDir, fileName));
-    
+
     expect(originalData.equals(extractedData)).toBe(true);
     expect(extractedData.length).toBe(fileSize);
   }, 30000);
@@ -517,13 +600,15 @@ describe('Integration tests', () => {
     const emptyFileNames = ['empty1.txt', 'empty2.bin', 'empty3.dat'];
     for (const fileName of emptyFileNames) {
       const fileMode = getRandomFileMode();
-      writeFileSync(join(sourceDir, fileName), Buffer.alloc(0), { mode: fileMode });
+      writeFileSync(join(sourceDir, fileName), Buffer.alloc(0), {
+        mode: fileMode,
+      });
     }
 
     // Pack with tar-vern
     const generator = createEntryItemGenerator(sourceDir, emptyFileNames, true);
     const packer = createTarPacker(generator);
-    
+
     const tarPath = join(testDir, 'empty.tar');
     const chunks: Buffer[] = [];
     for await (const chunk of packer) {
@@ -534,7 +619,7 @@ describe('Integration tests', () => {
     // Extract with tar command
     const extractDir = join(testDir, 'extracted');
     mkdirSync(extractDir, { recursive: true });
-    
+
     await runCommand('tar', ['-xf', tarPath], extractDir);
 
     // Verify empty files exist and are empty

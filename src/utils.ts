@@ -3,12 +3,22 @@
 // Under MIT.
 // https://github.com/kekyo/tar-vern/
 
-import { createReadStream, createWriteStream } from "fs";
-import { stat, mkdir, writeFile, readdir } from "fs/promises";
-import { Readable } from "stream";
-import { pipeline } from "stream/promises";
-import { dirname, join } from "path";
-import { CreateItemOptions, CreateReadableFileItemOptions, FileItem, DirectoryItem, ReflectStats, CreateDirectoryItemOptions, EntryItem, ExtractedEntryItem, ExtractedFileItem } from "./types";
+import { createReadStream, createWriteStream } from 'fs';
+import { stat, mkdir, writeFile, readdir } from 'fs/promises';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
+import { dirname, join } from 'path';
+import {
+  CreateItemOptions,
+  CreateReadableFileItemOptions,
+  FileItem,
+  DirectoryItem,
+  ReflectStats,
+  CreateDirectoryItemOptions,
+  EntryItem,
+  ExtractedEntryItem,
+  ExtractedFileItem,
+} from './types';
 
 // Tar specification: name max 100 bytes, prefix max 155 bytes
 export const MAX_NAME = 100;
@@ -21,9 +31,15 @@ export const MAX_PREFIX = 155;
  * @param reflectStat - Whether to reflect the stat (all, exceptName, none)
  * @returns The user/group name
  */
-const getUName = (candidateName: string | undefined, candidateId: number, reflectStat: ReflectStats | undefined) => {
-  return candidateName ?? (reflectStat === 'all' ? candidateId.toString() : 'root');
-}
+const getUName = (
+  candidateName: string | undefined,
+  candidateId: number,
+  reflectStat: ReflectStats | undefined
+) => {
+  return (
+    candidateName ?? (reflectStat === 'all' ? candidateId.toString() : 'root')
+  );
+};
 
 /**
  * Get a buffer from the string or Buffer
@@ -32,7 +48,7 @@ const getUName = (candidateName: string | undefined, candidateId: number, reflec
  */
 export const getBuffer = (data: Buffer | string) => {
   return Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8');
-}
+};
 
 ///////////////////////////////////////////////////////////////////////////////////
 
@@ -64,7 +80,13 @@ export const createDirectoryItem = async (
     const gname = getUName(options?.gname, stats.gid, rs);
     return {
       kind: 'directory',
-      path, mode, uname, gname, uid, gid, date,
+      path,
+      mode,
+      uname,
+      gname,
+      uid,
+      gid,
+      date,
     };
   } else {
     const mode = options?.mode ?? 0o755;
@@ -75,7 +97,13 @@ export const createDirectoryItem = async (
     const gname = getUName(options?.gname, undefined, rs);
     return {
       kind: 'directory',
-      path, mode, uname, gname, uid, gid, date,
+      path,
+      mode,
+      uname,
+      gname,
+      uid,
+      gid,
+      date,
     };
   }
 };
@@ -95,7 +123,7 @@ export const createFileItem = async (
   signal?: AbortSignal
 ): Promise<FileItem> => {
   signal?.throwIfAborted();
-  
+
   const mode = options?.mode ?? 0o644;
   const uid = options?.uid ?? 0;
   const gid = options?.gid ?? 0;
@@ -107,8 +135,14 @@ export const createFileItem = async (
   // Create a FileItem
   return {
     kind: 'file',
-    path, mode, uname, gname, uid, gid, date,
-    content
+    path,
+    mode,
+    uname,
+    gname,
+    uid,
+    gid,
+    date,
+    content,
   };
 };
 
@@ -152,23 +186,35 @@ export const createReadableFileItem = async (
     // Create a FileItem
     return {
       kind: 'file',
-      path, mode, uname, gname, uid, gid, date,
+      path,
+      mode,
+      uname,
+      gname,
+      uid,
+      gid,
+      date,
       content: {
         kind: 'readable',
         length,
-        readable: Readable.from(chunks, { signal })
-      }
+        readable: Readable.from(chunks, { signal }),
+      },
     };
   } else {
     // Create a FileItem
     return {
       kind: 'file',
-      path, mode, uname, gname, uid, gid, date,
+      path,
+      mode,
+      uname,
+      gname,
+      uid,
+      gid,
+      date,
       content: {
         kind: 'readable',
         length,
-        readable
-      }
+        readable,
+      },
     };
   }
 };
@@ -213,23 +259,35 @@ export const createGeneratorFileItem = async (
     // Create a FileItem
     return {
       kind: 'file',
-      path, mode, uname, gname, uid, gid, date,
+      path,
+      mode,
+      uname,
+      gname,
+      uid,
+      gid,
+      date,
       content: {
         kind: 'readable',
         length,
-        readable: Readable.from(chunks, { signal })
-      }
+        readable: Readable.from(chunks, { signal }),
+      },
     };
   } else {
     // Create a FileItem
     return {
       kind: 'file',
-      path, mode, uname, gname, uid, gid, date,
+      path,
+      mode,
+      uname,
+      gname,
+      uid,
+      gid,
+      date,
       content: {
         kind: 'generator',
         length,
-        generator
-      }
+        generator,
+      },
     };
   }
 };
@@ -267,9 +325,20 @@ export const createReadFileItem = async (
   const gname = getUName(options?.gname, stats.gid, rs);
 
   // Create a FileItem
-  return await createReadableFileItem(path, reader, {
-    length: stats.size, mode, uname, gname, uid, gid, date,
-  }, signal);
+  return await createReadableFileItem(
+    path,
+    reader,
+    {
+      length: stats.size,
+      mode,
+      uname,
+      gname,
+      uid,
+      gid,
+      date,
+    },
+    signal
+  );
 };
 
 ///////////////////////////////////////////////////////////////////////////////////
@@ -281,7 +350,11 @@ export const createReadFileItem = async (
  * @param signal - Optional abort signal to cancel the operation
  * @returns A promise that resolves when the stream is finished
  */
-export const storeReaderToFile = async (reader: Readable, path: string, signal?: AbortSignal) => {
+export const storeReaderToFile = async (
+  reader: Readable,
+  path: string,
+  signal?: AbortSignal
+) => {
   const writer = createWriteStream(path, { signal });
   await pipeline(reader, writer, { signal });
 };
@@ -295,46 +368,53 @@ export const storeReaderToFile = async (reader: Readable, path: string, signal?:
  * @returns Array of relative paths
  */
 const getAllFilesInDirectory = async (
-  baseDir: string, signal: AbortSignal | undefined): Promise<string[]> => {
-  
-  const collectFiles = async (currentDir: string, relativePath: string): Promise<string[]> => {
+  baseDir: string,
+  signal: AbortSignal | undefined
+): Promise<string[]> => {
+  const collectFiles = async (
+    currentDir: string,
+    relativePath: string
+  ): Promise<string[]> => {
     signal?.throwIfAborted();
-    
+
     try {
       const entries = await readdir(currentDir, { withFileTypes: true });
       const result: string[] = [];
-      
+
       // Process all entries in parallel and collect their results
       const tasks = entries.map(async (entry) => {
         signal?.throwIfAborted();
-        
+
         const entryRelativePath = join(relativePath, entry.name);
-        
+
         if (entry.isDirectory()) {
           const entryFullPath = join(currentDir, entry.name);
           // First add the directory itself, then its contents
-          const directoryContents = await collectFiles(entryFullPath, entryRelativePath);
+          const directoryContents = await collectFiles(
+            entryFullPath,
+            entryRelativePath
+          );
           return [entryRelativePath, ...directoryContents];
         } else {
           // For files, just return the file path
           return [entryRelativePath];
         }
       });
-      
+
       const allResults = await Promise.all(tasks);
-      
+
       // Flatten and combine all results while maintaining order
       for (const entryResults of allResults) {
         result.push(...entryResults);
       }
-      
+
       return result;
     } catch (error) {
       console.warn(`Warning: Could not read directory ${currentDir}:`, error);
       return [];
     }
   };
-  
+
   return await collectFiles(baseDir, '');
 };
 
@@ -356,27 +436,39 @@ export const createEntryItemGenerator = async function* (
 ): AsyncGenerator<EntryItem, void, unknown> {
   const rs = reflectStat ?? 'exceptName';
   const includeDir = includeDirectory ?? true;
-  
+
   // If relativePaths is not provided, collect all files in baseDir
-  const pathsToProcess = relativePaths ?? await getAllFilesInDirectory(baseDir, signal);
-  
+  const pathsToProcess =
+    relativePaths ?? (await getAllFilesInDirectory(baseDir, signal));
+
   for (const relativePath of pathsToProcess) {
     signal?.throwIfAborted();
-    
+
     const fsPath = join(baseDir, relativePath);
-    
+
     try {
       signal?.throwIfAborted();
       const stats = await stat(fsPath);
-      
+
       // Create directory entry only if includeDirectory is true
       if (includeDir && stats.isDirectory()) {
-        yield await createDirectoryItem(relativePath, rs, {
-          directoryPath: fsPath
-        }, signal);
+        yield await createDirectoryItem(
+          relativePath,
+          rs,
+          {
+            directoryPath: fsPath,
+          },
+          signal
+        );
       } else if (stats.isFile()) {
         // Create file entry
-        yield await createReadFileItem(relativePath, fsPath, rs, undefined, signal);
+        yield await createReadFileItem(
+          relativePath,
+          fsPath,
+          rs,
+          undefined,
+          signal
+        );
       }
     } catch (error) {
       // Skip files that can't be accessed (permissions, etc.)
@@ -400,9 +492,9 @@ export const extractTo = async (
 ): Promise<void> => {
   for await (const entry of iterator) {
     signal?.throwIfAborted();
-    
+
     const targetPath = join(basePath, entry.path);
-    
+
     if (entry.kind === 'directory') {
       // Create directory
       try {
@@ -419,7 +511,7 @@ export const extractTo = async (
       const parentDir = dirname(targetPath);
       signal?.throwIfAborted();
       await mkdir(parentDir, { recursive: true });
-      
+
       // Extract file content and write to filesystem
       const fileEntry = entry as ExtractedFileItem;
       const content = await fileEntry.getContent('buffer');

@@ -41,7 +41,8 @@ export interface EntryItemReadableContent extends EntryItemContentBase {
 /**
  * Union type for all entry item contents
  */
-export type EntryItemContent = EntryItemGeneratorContent | EntryItemReadableContent;
+export type EntryItemContent =
+  EntryItemGeneratorContent | EntryItemReadableContent;
 
 ///////////////////////////////////////////////////////////////////////////////////
 
@@ -120,7 +121,9 @@ export interface ExtractedFileItem extends EntryItemBase {
   getContent(type: 'string'): Promise<string>;
   getContent(type: 'buffer'): Promise<Buffer>;
   getContent(type: 'readable'): Promise<Readable>;
-  getContent(type: 'string' | 'buffer' | 'readable'): Promise<string | Buffer | Readable>;
+  getContent(
+    type: 'string' | 'buffer' | 'readable'
+  ): Promise<string | Buffer | Readable>;
 }
 
 /**

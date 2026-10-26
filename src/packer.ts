@@ -3,10 +3,10 @@
 // Under MIT.
 // https://github.com/kekyo/tar-vern/
 
-import { Readable } from "stream";
-import { createGzip } from "zlib";
-import { getBuffer, MAX_NAME, MAX_PREFIX } from "./utils";
-import { CompressionTypes, EntryItem, EntryItemContent } from "./types";
+import { Readable } from 'stream';
+import { createGzip } from 'zlib';
+import { getBuffer, MAX_NAME, MAX_PREFIX } from './utils';
+import { CompressionTypes, EntryItem, EntryItemContent } from './types';
 
 /**
  * Get the byte length of a string in UTF-8
@@ -14,8 +14,8 @@ import { CompressionTypes, EntryItem, EntryItemContent } from "./types";
  * @returns The byte length of the string
  */
 const utf8ByteLength = (str: string) => {
-  return Buffer.byteLength(str, "utf8");
-}
+  return Buffer.byteLength(str, 'utf8');
+};
 
 /**
  * Truncate a string to a maximum byte length in UTF-8
@@ -29,13 +29,13 @@ const truncateUtf8Safe = (str: string, maxBytes: number) => {
   while (i < str.length) {
     const codePoint = str.codePointAt(i)!;
     const char = String.fromCodePoint(codePoint);
-    const charBytes = Buffer.byteLength(char, "utf8");
+    const charBytes = Buffer.byteLength(char, 'utf8');
     if (total + charBytes > maxBytes) break;
     total += charBytes;
     i += char.length;
   }
   return str.slice(0, i);
-}
+};
 
 /**
  * Split a path into a name and a prefix
@@ -44,13 +44,13 @@ const truncateUtf8Safe = (str: string, maxBytes: number) => {
  */
 const splitPath = (path: string) => {
   if (utf8ByteLength(path) <= MAX_NAME) {
-    return { prefix: "", name: path };
+    return { prefix: '', name: path };
   }
 
   // Split by '/' and find the part that fits in name from the end
-  const parts = path.split("/");
-  let name = parts.pop() ?? "";
-  let prefix = parts.join("/");
+  const parts = path.split('/');
+  let name = parts.pop() ?? '';
+  let prefix = parts.join('/');
 
   // Truncate if name exceeds 100 bytes
   if (utf8ByteLength(name) > MAX_NAME) {
@@ -63,7 +63,7 @@ const splitPath = (path: string) => {
   }
 
   return { prefix, name };
-}
+};
 
 ///////////////////////////////////////////////////////////////////////////////////
 
@@ -74,8 +74,8 @@ const splitPath = (path: string) => {
  * @returns The octal bytes
  */
 const getOctalBytes = (value: number, length: number) => {
-  const str = value.toString(8).padStart(length - 1, "0") + "\0";
-  return Buffer.from(str, "ascii");
+  const str = value.toString(8).padStart(length - 1, '0') + '\0';
+  return Buffer.from(str, 'ascii');
 };
 
 /**
@@ -90,7 +90,7 @@ const getPaddedBytes = (buffer: Buffer) => {
   } else {
     return Buffer.concat([buffer, Buffer.alloc(512 - extra, 0)]);
   }
-}
+};
 
 /**
  * The terminator bytes
@@ -124,7 +124,7 @@ const createTarHeader = (
   const { name, prefix } = splitPath(path);
 
   // Write name, mode, uid, gid, size, mtime, typeflag, prefix, checksum
-  buffer.write(name, 0, 100, "utf8");
+  buffer.write(name, 0, 100, 'utf8');
   getOctalBytes(mode & 0o7777, 8).copy(buffer, 100);
   getOctalBytes(uid, 8).copy(buffer, 108);
   getOctalBytes(gid, 8).copy(buffer, 116);
@@ -132,18 +132,18 @@ const createTarHeader = (
   getOctalBytes(Math.floor(date.getTime() / 1000), 12).copy(buffer, 136);
 
   // Check sum space
-  Buffer.from("        ", "ascii").copy(buffer, 148);
+  Buffer.from('        ', 'ascii').copy(buffer, 148);
 
   if (type === 'file') {
-    buffer.write("0", 156, 1, "ascii");    // typeflag (file)
+    buffer.write('0', 156, 1, 'ascii'); // typeflag (file)
   } else {
-    buffer.write("5", 156, 1, "ascii");    // typeflag (directory)
+    buffer.write('5', 156, 1, 'ascii'); // typeflag (directory)
   }
-  buffer.write("ustar\0", 257, 6, "ascii");
-  buffer.write("00", 263, 2, "ascii");     // version
-  buffer.write(uname, 265, 32, "utf8");
-  buffer.write(gname, 297, 32, "utf8");
-  buffer.write(prefix, 345, 155, "utf8");  // Path prefix
+  buffer.write('ustar\0', 257, 6, 'ascii');
+  buffer.write('00', 263, 2, 'ascii'); // version
+  buffer.write(uname, 265, 32, 'utf8');
+  buffer.write(gname, 297, 32, 'utf8');
+  buffer.write(prefix, 345, 155, 'utf8'); // Path prefix
 
   // Calculate check sum
   let sum = 0;
@@ -153,7 +153,7 @@ const createTarHeader = (
   getOctalBytes(sum, 8).copy(buffer, 148);
 
   return buffer;
-}
+};
 
 ///////////////////////////////////////////////////////////////////////////////////
 
@@ -167,10 +167,10 @@ const createTarHeader = (
 export const createTarPacker = (
   entryItemGenerator: AsyncGenerator<EntryItem, void, unknown>,
   compressionType?: CompressionTypes,
-  signal?: AbortSignal) => {
-
+  signal?: AbortSignal
+) => {
   // Create async generator function from entry item iterator
-  const entryItemIterator = async function*() {
+  const entryItemIterator = async function* () {
     // Iterate over the entry items
     for await (const entryItem of entryItemGenerator) {
       signal?.throwIfAborted();
@@ -180,7 +180,10 @@ export const createTarPacker = (
         case 'file': {
           const entryItemContent = entryItem.content;
           // Content is a string or buffer
-          if (typeof entryItemContent === 'string' || Buffer.isBuffer(entryItemContent)) {
+          if (
+            typeof entryItemContent === 'string' ||
+            Buffer.isBuffer(entryItemContent)
+          ) {
             // Get content bytes from string or buffer
             const contentBytes = getBuffer(entryItemContent);
 
@@ -194,7 +197,8 @@ export const createTarPacker = (
               entryItem.gname,
               entryItem.uid,
               entryItem.gid,
-              entryItem.date);
+              entryItem.date
+            );
             yield tarHeaderBytes;
 
             // Content bytes to adjust padding space and produce
@@ -203,7 +207,7 @@ export const createTarPacker = (
           } else {
             // Assert that this is EntryItemContent, not FileItemReader (packer doesn't handle FileItemReader)
             const content = entryItemContent as EntryItemContent;
-            
+
             // Create and produce tar header bytes
             const tarHeaderBytes = createTarHeader(
               'file',
@@ -214,7 +218,8 @@ export const createTarPacker = (
               entryItem.gname,
               entryItem.uid,
               entryItem.gid,
-              entryItem.date);
+              entryItem.date
+            );
             yield tarHeaderBytes;
 
             let position = 0;

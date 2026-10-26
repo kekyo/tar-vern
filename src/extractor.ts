@@ -3,10 +3,15 @@
 // Under MIT.
 // https://github.com/kekyo/tar-vern/
 
-import { Readable } from "stream";
-import { createGunzip } from "zlib";
-import { CompressionTypes, ExtractedDirectoryItem, ExtractedEntryItem, ExtractedFileItem } from "./types";
-import { getBuffer } from "./utils";
+import { Readable } from 'stream';
+import { createGunzip } from 'zlib';
+import {
+  CompressionTypes,
+  ExtractedDirectoryItem,
+  ExtractedEntryItem,
+  ExtractedFileItem,
+} from './types';
+import { getBuffer } from './utils';
 
 /**
  * Parse octal bytes to number
@@ -15,8 +20,16 @@ import { getBuffer } from "./utils";
  * @param length - The length of the octal bytes
  * @returns The parsed number
  */
-const parseOctalBytes = (buffer: Buffer, offset: number, length: number): number => {
-  const str = buffer.subarray(offset, offset + length).toString('ascii').replace(/\0/g, '').trim();
+const parseOctalBytes = (
+  buffer: Buffer,
+  offset: number,
+  length: number
+): number => {
+  const str = buffer
+    .subarray(offset, offset + length)
+    .toString('ascii')
+    .replace(/\0/g, '')
+    .trim();
   return str ? parseInt(str, 8) : 0;
 };
 
@@ -27,8 +40,16 @@ const parseOctalBytes = (buffer: Buffer, offset: number, length: number): number
  * @param length - The length of the string
  * @returns The parsed string
  */
-const parseString = (buffer: Buffer, offset: number, length: number): string => {
-  return buffer.subarray(offset, offset + length).toString('utf8').replace(/\0/g, '').trim();
+const parseString = (
+  buffer: Buffer,
+  offset: number,
+  length: number
+): string => {
+  return buffer
+    .subarray(offset, offset + length)
+    .toString('utf8')
+    .replace(/\0/g, '')
+    .trim();
 };
 
 /**
@@ -41,26 +62,28 @@ const parseString = (buffer: Buffer, offset: number, length: number): string => 
 const readExactBytes = async (
   iterator: AsyncIterator<string | Buffer>,
   size: number,
-  signal: AbortSignal | undefined): Promise<Buffer | undefined> => {
-
+  signal: AbortSignal | undefined
+): Promise<Buffer | undefined> => {
   const chunks: Buffer[] = [];
   let totalRead = 0;
 
   while (totalRead < size) {
     signal?.throwIfAborted();
-    
+
     const { value, done } = await iterator.next();
     if (done) {
       if (totalRead === 0) {
         return undefined; // No data at all
       } else {
-        throw new Error(`Unexpected end of stream: expected ${size} bytes, got ${totalRead} bytes`);
+        throw new Error(
+          `Unexpected end of stream: expected ${size} bytes, got ${totalRead} bytes`
+        );
       }
     }
 
     const chunk = getBuffer(value);
     const needed = size - totalRead;
-    
+
     if (chunk.length <= needed) {
       chunks.push(chunk);
       totalRead += chunk.length;
@@ -85,21 +108,23 @@ const readExactBytes = async (
 const skipExactBytes = async (
   iterator: AsyncIterator<string | Buffer>,
   size: number,
-  signal: AbortSignal | undefined): Promise<void> => {
-
+  signal: AbortSignal | undefined
+): Promise<void> => {
   let totalSkipped = 0;
 
   while (totalSkipped < size) {
     signal?.throwIfAborted();
-    
+
     const { value, done } = await iterator.next();
     if (done) {
-      throw new Error(`Unexpected end of stream: expected to skip ${size} bytes, skipped ${totalSkipped} bytes`);
+      throw new Error(
+        `Unexpected end of stream: expected to skip ${size} bytes, skipped ${totalSkipped} bytes`
+      );
     }
 
     const chunk = getBuffer(value);
     const needed = size - totalSkipped;
-    
+
     if (chunk.length <= needed) {
       totalSkipped += chunk.length;
     } else {
@@ -119,7 +144,8 @@ const skipExactBytes = async (
 const skipPaddingBytesTo512Boundary = async (
   iterator: AsyncIterator<string | Buffer>,
   contentSize: number,
-  signal: AbortSignal | undefined) => {
+  signal: AbortSignal | undefined
+) => {
   // Skip padding bytes to next 512-byte boundary
   const padding = (512 - (contentSize % 512)) % 512;
   if (padding > 0) {
@@ -156,7 +182,7 @@ interface EntryItemInfo {
  */
 const parseTarHeader = (buffer: Buffer): EntryItemInfo | undefined => {
   // Check if this is the end of archive (all zeros)
-  if (buffer.every(b => b === 0)) {
+  if (buffer.every((b) => b === 0)) {
     return undefined;
   }
 
@@ -190,7 +216,9 @@ const parseTarHeader = (buffer: Buffer): EntryItemInfo | undefined => {
   }
 
   if (calculatedSum !== checksum) {
-    throw new Error(`Invalid checksum: expected ${checksum}, got ${calculatedSum}`);
+    throw new Error(
+      `Invalid checksum: expected ${checksum}, got ${calculatedSum}`
+    );
   }
 
   // Construct full path and remove trailing slash for directories
@@ -213,7 +241,7 @@ const parseTarHeader = (buffer: Buffer): EntryItemInfo | undefined => {
     uname: uname || uid.toString(),
     gname: gname || gid.toString(),
     checksum,
-    consumed: false
+    consumed: false,
   };
 };
 
@@ -239,7 +267,7 @@ const createBufferedAsyncIterator = (
         buffer.unshift(value);
       }
       return { value: undefined, done: false };
-    }
+    },
   };
 };
 
@@ -256,15 +284,17 @@ const createReadableFromIterator = (
   signal: AbortSignal | undefined,
   consumedRef: { consumed: boolean }
 ): Readable => {
-  const generator = async function*() {
+  const generator = async function* () {
     let remainingBytes = size;
-    
+
     while (remainingBytes > 0) {
       signal?.throwIfAborted();
 
       const { value, done } = await iterator.next();
       if (done) {
-        throw new Error(`Unexpected end of stream: expected ${size} bytes, remaining ${remainingBytes} bytes`);
+        throw new Error(
+          `Unexpected end of stream: expected ${size} bytes, remaining ${remainingBytes} bytes`
+        );
       }
 
       const chunk = getBuffer(value);
@@ -276,7 +306,7 @@ const createReadableFromIterator = (
         const needed = chunk.subarray(0, remainingBytes);
         const excess = chunk.subarray(remainingBytes);
         remainingBytes = 0;
-        
+
         // Return excess data to the iterator
         await iterator.return?.(excess);
         yield needed;
@@ -306,8 +336,8 @@ const createReadableFromIterator = (
 export const createTarExtractor = async function* (
   readable: Readable,
   compressionType?: CompressionTypes,
-  signal?: AbortSignal): AsyncGenerator<ExtractedEntryItem, void, unknown> {
-
+  signal?: AbortSignal
+): AsyncGenerator<ExtractedEntryItem, void, unknown> {
   const ct = compressionType ?? 'none';
 
   // Apply decompression if needed
@@ -352,12 +382,15 @@ export const createTarExtractor = async function* (
     try {
       headerBuffer = await readExactBytes(iterator, 512, signal);
     } catch (error) {
-      if (error instanceof Error && error.message.includes('Unexpected end of stream')) {
+      if (
+        error instanceof Error &&
+        error.message.includes('Unexpected end of stream')
+      ) {
         throw new Error('Invalid tar format: incomplete header');
       }
       throw error;
     }
-    
+
     if (headerBuffer === undefined) {
       break; // End of stream
     }
@@ -367,7 +400,7 @@ export const createTarExtractor = async function* (
     if (!header) {
       // Check for second terminator block
       const secondBlock = await readExactBytes(iterator, 512, signal);
-      if (secondBlock === undefined || secondBlock.every(b => b === 0)) {
+      if (secondBlock === undefined || secondBlock.every((b) => b === 0)) {
         break; // Proper end of archive
       }
       throw new Error('Invalid tar format: expected terminator block');
@@ -383,12 +416,12 @@ export const createTarExtractor = async function* (
         gid: header.gid,
         uname: header.uname,
         gname: header.gname,
-        date: header.mtime
+        date: header.mtime,
       } as ExtractedDirectoryItem;
     } else {
       // Capture current header to avoid closure issues
       const currentHeader = header;
-      
+
       // Yield file entry with lazy getContent
       yield {
         kind: 'file',
@@ -402,44 +435,71 @@ export const createTarExtractor = async function* (
         getContent: async (type: any) => {
           // Is multiple called
           if (currentHeader.consumed) {
-            throw new Error('Content has already been consumed. Multiple calls to getContent are not supported.');
+            throw new Error(
+              'Content has already been consumed. Multiple calls to getContent are not supported.'
+            );
           }
 
           switch (type) {
             // For string
             case 'string': {
               // Read entire contents just now
-              const dataBuffer = await readExactBytes(iterator, currentHeader.size, signal);
+              const dataBuffer = await readExactBytes(
+                iterator,
+                currentHeader.size,
+                signal
+              );
               if (dataBuffer === undefined) {
-                throw new Error(`Unexpected end of stream while reading file data for ${currentHeader.path}`);
+                throw new Error(
+                  `Unexpected end of stream while reading file data for ${currentHeader.path}`
+                );
               }
               // Finalize to skip boundary
-              await skipPaddingBytesTo512Boundary(iterator, currentHeader.size, signal);
+              await skipPaddingBytesTo512Boundary(
+                iterator,
+                currentHeader.size,
+                signal
+              );
               currentHeader.consumed = true;
               return dataBuffer.toString('utf8');
             }
             // For buffer
             case 'buffer': {
               // Read entire contents just now
-              const dataBuffer = await readExactBytes(iterator, currentHeader.size, signal);
+              const dataBuffer = await readExactBytes(
+                iterator,
+                currentHeader.size,
+                signal
+              );
               if (dataBuffer === undefined) {
-                throw new Error(`Unexpected end of stream while reading file data for ${currentHeader.path}`);
+                throw new Error(
+                  `Unexpected end of stream while reading file data for ${currentHeader.path}`
+                );
               }
               // Finalize to skip boundary
-              await skipPaddingBytesTo512Boundary(iterator, currentHeader.size, signal);
+              await skipPaddingBytesTo512Boundary(
+                iterator,
+                currentHeader.size,
+                signal
+              );
               currentHeader.consumed = true;
               return dataBuffer;
             }
             // For Readble stream
             case 'readable': {
               // Get Readble object (to delegate)
-              const readable = createReadableFromIterator(iterator, currentHeader.size, signal, currentHeader);
+              const readable = createReadableFromIterator(
+                iterator,
+                currentHeader.size,
+                signal,
+                currentHeader
+              );
               return readable;
             }
             default:
               throw new Error(`Unsupported content type: ${type}`);
           }
-        }
+        },
       } as ExtractedFileItem;
     }
   }
