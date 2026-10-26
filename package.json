@@ -55,7 +55,10 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && vitest run",
     "dump": "npm run build && screw-up dump",
-    "pack": "npm run build && screw-up pack --pack-destination artifacts/"
+    "pack": "npm run build && screw-up pack --pack-destination artifacts/",
+    "example:browser": "vite --config examples/browser/vite.config.ts",
+    "build:example": "vite build --config examples/browser/vite.config.ts",
+    "test:browser": "npm run build && node scripts/browser-test.mjs"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",

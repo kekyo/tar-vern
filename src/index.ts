@@ -11,4 +11,5 @@ export {
   createFileItem,
   createReadableFileItem,
   createGeneratorFileItem,
+  createBlobFileItem,
 } from './utils.ts';
