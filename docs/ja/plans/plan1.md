@@ -45,7 +45,7 @@ Node.js v24.15.0で通常のビルドと既存57テストの成功を確認し�
 
 ブラウザでは文字列、`Uint8Array`、非同期反復可能なバイト列、Web Streams、`File`、`Blob`を扱う。Node.jsでは共通APIに加えて、実ファイルの読み書きとディレクトリー走査を提供する。
 
-対象ブラウザは必要なWeb標準APIを備えるChromium、Firefox、WebKitを基本とする。Node.jsの最低対応バージョンは22.17.0とし、22.17.0と24.15.0で検証した。ブラウザはPlaywright MCP 0.0.83に対応するChromium 155.0.8059.12、Firefox 156.0、WebKit 26.6で検証した。ブラウザの取得バージョンはpackage-lock.jsonで固定する。未対応環境向けの互換ライブラリを暗黙に追加しない。
+対象ブラウザは必要なWeb標準APIを備えるChromium、Firefox、WebKitを基本とする。パッケージのメタデータで指定するNode.jsの下限は20.0.0とする。実装完了時の検証は22.17.0と24.15.0で行った。ブラウザはPlaywright MCP 0.0.83に対応するChromium 155.0.8059.12、Firefox 156.0、WebKit 26.6で検証した。ブラウザの取得バージョンはpackage-lock.jsonで固定する。未対応環境向けの互換ライブラリを暗黙に追加しない。
 
 次の機能は今回の実装範囲に含めない。
 
@@ -120,7 +120,7 @@ tarはファイルのサイズを含むヘッダーを書き、その後に本�
 
 `tar-vern/node`から、`createReadFileItem`、`storeReaderToFile`、`createEntryItemGenerator`、`extractTo`などを公開する。現在の`createDirectoryItem`に含まれる実ディレクトリーの`stat()`処理も、Node.js側へ分離する。
 
-Node.js専用ヘルパーは共通のエントリー型を使い、ストリームの変換は接続部分に限定する。`Readable.toWeb()`と`Readable.fromWeb()`の公式ドキュメントとAPIコメントを確認し、対応対象で安定APIとして利用できることを確かめる。[Node.js Web Streams](https://nodejs.org/api/webstreams.html#nodejs-streams-interoperability)
+Node.js専用ヘルパーは共通のエントリー型を使い、ストリームの変換は接続部分に限定する。`Readable.toWeb()`と`Readable.fromWeb()`を利用する場合は、公式ドキュメントとAPIコメントを確認する。これらの変換APIはNode.js 22.17.0で安定版になった。[Node.js Web Streams](https://nodejs.org/api/webstreams.html#nodejs-streams-interoperability)
 
 `extractTo`も、ファイル全体を`getContent('buffer')`で取得する現在の処理から、内容のストリームを保存先へ流す処理に変更する。展開対象のメタデータや、既存のファイル操作で実現している動作はテストで確認する。
 
