@@ -11,7 +11,6 @@ export default defineConfig({
       generatePrettierConfig: false,
     }),
     dts({
-      rollupTypes: true,
       async afterBuild() {
         for (const entry of ['index', 'node']) {
           for (const extension of ['d.mts', 'd.cts']) {
@@ -29,7 +28,9 @@ export default defineConfig({
       fileName: (format, entryName) =>
         `${entryName}.${format === 'es' ? 'mjs' : 'cjs'}`,
     },
-    rollupOptions: {
+    rolldownOptions: {
+      // Formatting and type checking intentionally dominate this small library's build.
+      checks: { bundlerTimings: false },
       external: (id) => id.startsWith('node:'),
       output: [
         {
