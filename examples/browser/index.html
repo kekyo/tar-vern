@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tar-vern browser example</title>
+    <style>
+      body {
+        max-width: 48rem;
+        margin: 3rem auto;
+        padding: 0 1rem;
+        font: 16px/1.6 system-ui;
+        color: #182334;
+        background: #f5f7fa;
+      }
+      section {
+        margin: 1.5rem 0;
+        padding: 1.5rem;
+        background: white;
+        border: 1px solid #d8dfe8;
+        border-radius: 8px;
+      }
+      button,
+      input {
+        font: inherit;
+        margin: 0.4rem 0.5rem 0.4rem 0;
+      }
+      button {
+        padding: 0.4rem 0.8rem;
+        cursor: pointer;
+      }
+      output {
+        display: block;
+        white-space: pre-wrap;
+      }
+      li {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>tar-vern browser example</h1>
+    <label
+      ><input id="gzip" type="checkbox" /> Use gzip for creating and reading
+      archives</label
+    >
+    <section>
+      <h2>Create a tar archive</h2>
+      <label>Files <input id="files" type="file" multiple /></label>
+      <p>
+        Stream and count processes the output without keeping the archive in
+        memory. Download collects the complete output before saving.
+      </p>
+      <button id="pack">Stream and count</button>
+      <button id="download">Download</button>
+      <a id="save" hidden>Save archive</a>
+    </section>
+    <section>
+      <h2>Read a tar archive</h2>
+      <label>Archive <input id="archive" type="file" /></label>
+      <button id="extract">Read files</button>
+      <ul id="entries"></ul>
+    </section>
+    <button id="cancel" disabled>Cancel</button>
+    <output id="status" role="status">Ready</output>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>
