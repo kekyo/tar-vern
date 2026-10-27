@@ -24,7 +24,6 @@ npm install tar-vern
 ```
 
 When using Node.js, version 20.0.0 or later is required.
-The stream conversion APIs `Readable.fromWeb()` and `Readable.toWeb()` became stable in Node.js 22.17.0. [Node.js Stream API](https://nodejs.org/api/stream.html#streamreadablefromwebreadablestream-options)
 
 In the browser, use `ReadableStream`, `WritableStream`, `AbortController`, `AbortSignal.throwIfAborted()`, `TextEncoder`, `TextDecoder`, and `DOMException`.
 For input from `File` and `Blob`, you need `Blob.stream()`; for generating and decompressing gzip, you need `CompressionStream(‘gzip’)` and `DecompressionStream(‘gzip’)`, respectively.

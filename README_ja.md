@@ -228,6 +228,7 @@ const countFileBytes = async (source: ReadableStream<Uint8Array>) => {
 内容を取得しないまま次のエントリーへ進むと、そのファイルは読み飛ばされます。
 ストリームを取得した場合は、読み切るかキャンセルしてから次へ進めてください。
 取得したストリームが未完了のまま親の列挙を進めるとエラーになります。
+
 途中まで読んで不要になった場合は`await reader.cancel()`で内容をキャンセルし、`reader.releaseLock()`でロックを解放します。
 次のエントリーへ進む際に残りの内容が読み飛ばされます。
 
@@ -263,6 +264,7 @@ tar終端の後に届くgzipの末尾エラーや入力エラーも伝わりま�
 複数メンバーの連結は対応範囲外で、拒否されるかどうかは実行環境に依存します。
 標準仕様は連結メンバーを拒否しますが、Node.js v24.15.0では受理されることを確認しています。
 全環境での拒否は保証しません。
+
 [gzip仕様](https://compression.spec.whatwg.org/#gzip)、[Node.js v24.15.0の圧縮ストリーム実装](https://github.com/nodejs/node/blob/v24.15.0/lib/internal/webstreams/compression.js)
 
 ## Node.jsのファイルシステムAPI
@@ -316,8 +318,11 @@ await extractTo(
 
 Node.jsのバイナリー`Readable`は`AsyncIterable<Uint8Array>`として入力できます。
 Web StreamをNode.jsの既存パイプラインへ渡す場合は`Readable.fromWeb()`、Node.jsストリームを`createReadableFileItem`へ渡す場合は`Readable.toWeb()`で変換します。
+
 これらの変換APIはNode.js 22.17.0で安定版になりました。
 [Node.js Stream API](https://nodejs.org/api/stream.html#streamreadablefromwebreadablestream-options)
+
+---
 
 ## tar形式の範囲
 

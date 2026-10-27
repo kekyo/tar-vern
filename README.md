@@ -268,6 +268,7 @@ Missing APIs cause an explicit error, without silently falling back to uncompres
 Only single-member gzip is supported.
 A member is one independent gzip-compressed data unit.
 Concatenated members are outside the supported scope, and their rejection depends on the runtime.
+
 The standard requires rejection, but Node.js v24.15.0 has been observed to accept them. Rejection is not guaranteed across all environments.
 [Gzip specification](https://compression.spec.whatwg.org/#gzip), [Node.js v24.15.0 compression stream implementation](https://github.com/nodejs/node/blob/v24.15.0/lib/internal/webstreams/compression.js)
 
@@ -324,8 +325,11 @@ It does not reapply uid, gid, or timestamps to the OS.
 
 Binary Node.js `Readable` streams can be supplied as `AsyncIterable<Uint8Array>`.
 Use `Readable.fromWeb()` to connect Web Streams to existing Node.js pipelines, and `Readable.toWeb()` to supply a Node.js stream to `createReadableFileItem`.
+
 These conversion APIs became stable in Node.js 22.17.0.
 [Node.js Stream API](https://nodejs.org/api/stream.html#streamreadablefromwebreadablestream-options)
+
+---
 
 ## Tar format scope
 
