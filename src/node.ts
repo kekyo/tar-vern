@@ -157,7 +157,7 @@ export const storeReaderToFile = async (
   const writer = createWriteStream(path, { signal });
   // The pipeline signal also cancels pending reads when the destination fails.
   await pipeline(
-    (options?: { signal: AbortSignal }) =>
+    (options: { signal?: AbortSignal } | undefined) =>
       iterateSource(reader, options?.signal),
     writer,
     { signal }
@@ -328,7 +328,7 @@ export const extractTo = async (
       });
       // The pipeline signal also cancels pending reads when the destination fails.
       await pipeline(
-        (options?: { signal: AbortSignal }) =>
+        (options: { signal?: AbortSignal } | undefined) =>
           iterateSource(content, options?.signal),
         writer,
         { signal }

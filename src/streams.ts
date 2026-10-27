@@ -154,7 +154,7 @@ export const createByteReader = (
   signal: AbortSignal
 ) => {
   const iterator = iterateSource(source, signal);
-  let chunk = new Uint8Array();
+  let chunk: Uint8Array = new Uint8Array();
   let offset = 0;
   const take = async (limit: number): Promise<Uint8Array | undefined> => {
     signal.throwIfAborted();

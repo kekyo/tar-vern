@@ -64,7 +64,7 @@ const pack = async (download: boolean) =>
         );
       }
     };
-    const chunks: Uint8Array[] = [];
+    const chunks: BlobPart[] = [];
     let bytes = 0;
     await createTarPacker(
       entries(),

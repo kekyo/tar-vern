@@ -21,7 +21,9 @@ export const transformGzip = (
       `${direction === 'compress' ? 'CompressionStream' : 'DecompressionStream'} is required for gzip`
     );
   }
-  const input =
+  // Include the compression API's accepted chunk types when connecting the streams.
+  // Native compression still validates each chunk, including its backing buffer.
+  const input: ReadableStream<Uint8Array | BufferSource> =
     'getReader' in source
       ? source
       : readableFrom((ownSignal) => iterateSource(source, ownSignal), signal);
