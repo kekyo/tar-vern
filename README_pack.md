@@ -1,102 +1,104 @@
-# Tape archiver library for Typescript
+# tar-vern
 
-Tape archiver (tar) library for Typescript implementation.
+A TypeScript/JavaScript library for creating and extracting tar archives
 
 ![tar-vern](images/tar-vern-120-c.png)
 
-[![Project Status: Active – The project has reached a stable, usable state and is being actively developed.](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
+[![Project Status: Active](https://www.repostatus.org/badges/latest/active.svg)](https://www.repostatus.org/#active)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![npm version](https://img.shields.io/npm/v/tar-vern.svg)](https://www.npmjs.com/package/tar-vern)
 
-----
+---
 
-## What is this?
+## What Is This?
 
-A modern TypeScript library for creating tape archives (tar/ustar format) using streaming API. Supports both files and directories with metadata preservation, GZip compression, readable streaming, and flexible content sources.
+tar-vern is a library for TypeScript and JavaScript that creates and extracts tar archives.
 
-## Features
+It supports sequential encoding and decoding and features a modern API.
+It works in both browser environments and Node.js.
 
-- Streaming API: Memory-efficient processing of large files
-- Multiple content sources: String, Buffer, ReadableStream, file paths and async generators
-- Metadata preservation: File permissions, ownership, timestamps
-- Built-in compression: GZip compression support (`tar.gz` format)
-- No external dependencies.
+## Installation and requirements
 
-## Installation
-
-```bash
+```sh
 npm install tar-vern
 ```
 
-----
+When using Node.js, version 20.0.0 or later is required.
 
-## Minimal sample code
+In the browser, use `ReadableStream`, `WritableStream`, `AbortController`, `AbortSignal.throwIfAborted()`, `TextEncoder`, `TextDecoder`, and `DOMException`.
+For input from `File` and `Blob`, you need `Blob.stream()`; for generating and decompressing gzip, you need `CompressionStream(‘gzip’)` and `DecompressionStream(‘gzip’)`, respectively.
 
-tar-vern supplies file and directory information to pack through "TypeScript async generator."
-This allows you to specify pack data with very concise code.
+The following examples are provided for reference:
+
+```typescript
+import { createTarPacker } from 'tar-vern';
+import { storeReaderToFile } from 'tar-vern/node';
+```
+
+```javascript
+const { createTarPacker } = require('tar-vern');
+const { storeReaderToFile } = require('tar-vern/node');
+```
+
+The common API is loaded from `tar-vern`, and the Node.js-specific API for working with file systems is loaded from `tar-vern/node`.
+
+The common API and its type definitions do not depend on Node.js modules or `Buffer`, so a Node.js polyfill for browsers is not required.
+It supports both ESM and CommonJS.
+
+## Creating and extracting an archive
+
+An entry represents a file or directory inside an archive.
+Supply entries through an async generator, and `createTarPacker` produces tar bytes in that order.
+`createTarExtractor` accepts those bytes and yields entries sequentially.
 
 ```typescript
 import {
-  createTarPacker, storeReaderToFile,
-  createFileItem, createDirectoryItem } from 'tar-vern';
+  createDirectoryItem,
+  createFileItem,
+  createTarPacker,
+  createTarExtractor,
+} from 'tar-vern';
 
-// Create an async generator for tar entries
-const itemGenerator = async function*() {
-  // Add a simple text file
-  yield await createFileItem(
-    'hello.txt',      // file name
-    'Hello, world!'   // text contents
-  );
-  
-  // Add a directory
-  yield await createDirectoryItem('mydir');
-
-  // (Make your own entries with yield expression...)
+const entries = async function* () {
+  yield await createDirectoryItem('messages');
+  yield await createFileItem('messages/hello.txt', 'Hello, world!');
 };
 
-// Create GZipped tar stream and write to file
-const packer = createTarPacker(itemGenerator(), 'gzip');
-await storeReaderToFile(packer, 'archive.tar.gz');   // Use helper to awaitable
-```
-
-tar-vern provides tar extraction through async generator too, allowing you to process entries as they are extracted from the tar archive.
-
-```typescript
-import { createReadStream } from 'fs';
-import { createTarExtractor } from 'tar-vern';
-
-// Read GZipped tar file and extract entries
-const readableStream = createReadStream('archive.tar.gz');
-
-for await (const extractedItem of createTarExtractor(readableStream), 'gzip') {
-  if (extractedItem.kind === 'file') {
-    console.log(`File: ${extractedItem.path}`);
-    
-    // Get content as string or buffer
-    const content = await extractedItem.getContent('string');
-    console.log(`Content: ${content}`);
-  } else {
-    console.log(`Directory: ${extractedItem.path}`);
+const archive = createTarPacker(entries());
+for await (const entry of createTarExtractor(archive)) {
+  if (entry.kind === 'file') {
+    console.log(entry.path, await entry.getContent('string'));
   }
 }
 ```
 
-----
+## Creating archives from browser Files and Blobs
 
-## Features
+A selected `File` already has a known size.
+`createBlobFileItem` uses `File.size` or `Blob.size`, so it does not collect the contents to determine their length.
 
-- Bidirectional streaming: Both creation and extraction of tar archives
-- Memory-efficient: Streaming API for processing large files without content buffering
-- Multiple content sources: String, Buffer, ReadableStream, file paths and async generators
-- Metadata preservation: File permissions, ownership, timestamps
-- Built-in compression/decompression: GZip compression support (`tar.gz` format)
-- Flexible content access: Extract files as string, Buffer, or Readable stream on demand
-- Error handling: Comprehensive validation and error reporting
-- Abort signal support: Cancellable operations
-- No external dependencies: Pure TypeScript implementation
+```typescript
+import { createBlobFileItem, createTarPacker } from 'tar-vern';
 
-For more information, [see repository documents](http://github.com/kekyo/tar-vern/).
+const packFiles = async (
+  files: Iterable<File>,
+  destination: WritableStream<Uint8Array>,
+  signal?: AbortSignal
+) => {
+  const entries = async function* () {
+    for (const file of files) {
+      yield await createBlobFileItem(file.name, file, undefined, signal);
+    }
+  };
+  await createTarPacker(entries(), 'none', signal).pipeTo(destination, { signal });
+};
+```
 
-----
+---
+
+## Documents
+
+For more information, [see the repository.](https://github.com/kekyo/tar-vern/)
 
 ## License
 

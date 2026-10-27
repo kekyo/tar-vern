@@ -3,16 +3,13 @@
 // Under MIT.
 // https://github.com/kekyo/tar-vern/
 
-export type * from './types';
-export * from './packer';
-export * from './extractor';
+export type * from './types.ts';
+export { createTarPacker } from './packer.ts';
+export { createTarExtractor } from './extractor.ts';
 export {
   createDirectoryItem,
   createFileItem,
   createReadableFileItem,
   createGeneratorFileItem,
-  createReadFileItem,
-  storeReaderToFile,
-  createEntryItemGenerator,
-  extractTo
-} from './utils';
+  createBlobFileItem,
+} from './utils.ts';

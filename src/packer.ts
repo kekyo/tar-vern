@@ -3,10 +3,13 @@
 // Under MIT.
 // https://github.com/kekyo/tar-vern/
 
-import { Readable } from "stream";
-import { createGzip } from "zlib";
-import { getBuffer, MAX_NAME, MAX_PREFIX } from "./utils";
-import { CompressionTypes, EntryItem, EntryItemContent } from "./types";
+import { transformGzip } from './compression.ts';
+import { getBytes, concatBytes, validateLength, writeText } from './bytes.ts';
+// Tar specification: name max 100 bytes, prefix max 155 bytes
+const MAX_NAME = 100;
+const MAX_PREFIX = 155;
+import type { CompressionTypes, EntryItem } from './types.ts';
+import { iterateSource, readableFrom } from './streams.ts';
 
 /**
  * Get the byte length of a string in UTF-8
@@ -14,8 +17,8 @@ import { CompressionTypes, EntryItem, EntryItemContent } from "./types";
  * @returns The byte length of the string
  */
 const utf8ByteLength = (str: string) => {
-  return Buffer.byteLength(str, "utf8");
-}
+  return getBytes(str).length;
+};
 
 /**
  * Truncate a string to a maximum byte length in UTF-8
@@ -29,13 +32,13 @@ const truncateUtf8Safe = (str: string, maxBytes: number) => {
   while (i < str.length) {
     const codePoint = str.codePointAt(i)!;
     const char = String.fromCodePoint(codePoint);
-    const charBytes = Buffer.byteLength(char, "utf8");
+    const charBytes = getBytes(char).length;
     if (total + charBytes > maxBytes) break;
     total += charBytes;
     i += char.length;
   }
   return str.slice(0, i);
-}
+};
 
 /**
  * Split a path into a name and a prefix
@@ -44,13 +47,13 @@ const truncateUtf8Safe = (str: string, maxBytes: number) => {
  */
 const splitPath = (path: string) => {
   if (utf8ByteLength(path) <= MAX_NAME) {
-    return { prefix: "", name: path };
+    return { prefix: '', name: path };
   }
 
   // Split by '/' and find the part that fits in name from the end
-  const parts = path.split("/");
-  let name = parts.pop() ?? "";
-  let prefix = parts.join("/");
+  const parts = path.split('/');
+  let name = parts.pop() ?? '';
+  let prefix = parts.join('/');
 
   // Truncate if name exceeds 100 bytes
   if (utf8ByteLength(name) > MAX_NAME) {
@@ -63,7 +66,7 @@ const splitPath = (path: string) => {
   }
 
   return { prefix, name };
-}
+};
 
 ///////////////////////////////////////////////////////////////////////////////////
 
@@ -74,28 +77,14 @@ const splitPath = (path: string) => {
  * @returns The octal bytes
  */
 const getOctalBytes = (value: number, length: number) => {
-  const str = value.toString(8).padStart(length - 1, "0") + "\0";
-  return Buffer.from(str, "ascii");
+  const str = value.toString(8).padStart(length - 1, '0') + '\0';
+  return getBytes(str);
 };
-
-/**
- * Get padded bytes from a buffer
- * @param buffer - The buffer to get padded bytes from
- * @returns The padded bytes
- */
-const getPaddedBytes = (buffer: Buffer) => {
-  const extra = buffer.length % 512;
-  if (extra === 0) {
-    return buffer;
-  } else {
-    return Buffer.concat([buffer, Buffer.alloc(512 - extra, 0)]);
-  }
-}
 
 /**
  * The terminator bytes
  */
-const terminatorBytes = Buffer.alloc(1024, 0);
+const terminatorBytes = new Uint8Array(1024);
 
 /**
  * Create a tar header
@@ -117,179 +106,153 @@ const createTarHeader = (
   gid: number,
   date: Date
 ) => {
+  validateLength(size);
   // Allocate header bytes
-  const buffer = Buffer.alloc(512, 0);
+  const buffer = new Uint8Array(512);
 
   // Split path into name and prefix
   const { name, prefix } = splitPath(path);
 
   // Write name, mode, uid, gid, size, mtime, typeflag, prefix, checksum
-  buffer.write(name, 0, 100, "utf8");
-  getOctalBytes(mode & 0o7777, 8).copy(buffer, 100);
-  getOctalBytes(uid, 8).copy(buffer, 108);
-  getOctalBytes(gid, 8).copy(buffer, 116);
-  getOctalBytes(size, 12).copy(buffer, 124);
-  getOctalBytes(Math.floor(date.getTime() / 1000), 12).copy(buffer, 136);
+  writeText(buffer, name, 0, 100);
+  buffer.set(getOctalBytes(mode & 0o7777, 8), 100);
+  buffer.set(getOctalBytes(uid, 8), 108);
+  buffer.set(getOctalBytes(gid, 8), 116);
+  buffer.set(getOctalBytes(size, 12), 124);
+  buffer.set(getOctalBytes(Math.floor(date.getTime() / 1000), 12), 136);
 
   // Check sum space
-  Buffer.from("        ", "ascii").copy(buffer, 148);
+  buffer.fill(32, 148, 156);
 
   if (type === 'file') {
-    buffer.write("0", 156, 1, "ascii");    // typeflag (file)
+    writeText(buffer, '0', 156, 1); // typeflag (file)
   } else {
-    buffer.write("5", 156, 1, "ascii");    // typeflag (directory)
+    writeText(buffer, '5', 156, 1); // typeflag (directory)
   }
-  buffer.write("ustar\0", 257, 6, "ascii");
-  buffer.write("00", 263, 2, "ascii");     // version
-  buffer.write(uname, 265, 32, "utf8");
-  buffer.write(gname, 297, 32, "utf8");
-  buffer.write(prefix, 345, 155, "utf8");  // Path prefix
+  writeText(buffer, 'ustar\0', 257, 6);
+  writeText(buffer, '00', 263, 2); // version
+  writeText(buffer, uname, 265, 32);
+  writeText(buffer, gname, 297, 32);
+  writeText(buffer, prefix, 345, 155); // Path prefix
 
   // Calculate check sum
   let sum = 0;
   for (let i = 0; i < 512; i++) {
     sum += buffer[i];
   }
-  getOctalBytes(sum, 8).copy(buffer, 148);
+  buffer.set(getOctalBytes(sum, 8), 148);
 
   return buffer;
-}
+};
 
 ///////////////////////////////////////////////////////////////////////////////////
 
 /**
- * Create a tar packer
- * @param entryItemGenerator - The async generator of the entry items
- * @param compressionType - The compression type to use (Default: 'none')
- * @param signal - The abort signal to cancel the tar packer
- * @returns Readable stream of the tar packer
+ * Create a pull-driven tar stream.
+ * @param entryItemGenerator - Entries in archive order; the total archive size need not be known.
+ * @param compressionType - Compression format (default: 'none').
+ * @param signal - Abort ongoing reads and close upstream inputs.
+ * @returns A Web Stream of tar bytes.
+ * @remarks Streaming file contents require an exact byte length. A size mismatch errors the output.
  */
 export const createTarPacker = (
-  entryItemGenerator: AsyncGenerator<EntryItem, void, unknown>,
+  entryItemGenerator: AsyncIterable<EntryItem>,
   compressionType?: CompressionTypes,
-  signal?: AbortSignal) => {
-
-  // Create async generator function from entry item iterator
-  const entryItemIterator = async function*() {
-    // Iterate over the entry items
-    for await (const entryItem of entryItemGenerator) {
-      signal?.throwIfAborted();
-
-      switch (entryItem.kind) {
-        // Entry is a file
-        case 'file': {
-          const entryItemContent = entryItem.content;
-          // Content is a string or buffer
-          if (typeof entryItemContent === 'string' || Buffer.isBuffer(entryItemContent)) {
-            // Get content bytes from string or buffer
-            const contentBytes = getBuffer(entryItemContent);
-
-            // Create and produce tar header bytes
-            const tarHeaderBytes = createTarHeader(
-              'file',
-              entryItem.path,
-              contentBytes.length,
-              entryItem.mode,
-              entryItem.uname,
-              entryItem.gname,
-              entryItem.uid,
-              entryItem.gid,
-              entryItem.date);
-            yield tarHeaderBytes;
-
-            // Content bytes to adjust padding space and produce
-            const totalPaddedContentBytes = getPaddedBytes(contentBytes);
-            yield totalPaddedContentBytes;
-          } else {
-            // Assert that this is EntryItemContent, not FileItemReader (packer doesn't handle FileItemReader)
-            const content = entryItemContent as EntryItemContent;
-            
-            // Create and produce tar header bytes
-            const tarHeaderBytes = createTarHeader(
-              'file',
-              entryItem.path,
-              content.length,
-              entryItem.mode,
-              entryItem.uname,
-              entryItem.gname,
-              entryItem.uid,
-              entryItem.gid,
-              entryItem.date);
-            yield tarHeaderBytes;
-
-            let position = 0;
-            switch (content.kind) {
-              // Content is a generator
-              case 'generator': {
-                for await (const contentBytes of content.generator) {
-                  signal?.throwIfAborted();
-                  yield contentBytes;
-                  position += contentBytes.length;
-                }
-                break;
-              }
-              // Content is a readable stream
-              case 'readable': {
-                for await (const chunk of content.readable) {
-                  signal?.throwIfAborted();
-                  const contentBytes = getBuffer(chunk);
-                  yield contentBytes;
-                  position += contentBytes.length;
-                }
-                break;
-              }
-            }
-
-            // Padding space
-            if (position % 512 !== 0) {
-              signal?.throwIfAborted();
-              yield Buffer.alloc(512 - (position % 512), 0);
-            }
+  signal?: AbortSignal
+): ReadableStream<Uint8Array> => {
+  if (
+    compressionType === 'gzip' &&
+    typeof globalThis.CompressionStream !== 'function'
+  )
+    throw new Error('CompressionStream is required for gzip');
+  // Create an async iterator and connect its lifetime to the output stream.
+  const output = readableFrom(async function* (ownSignal) {
+    // Iterate over the entry items.
+    for await (const entryItem of iterateSource(
+      entryItemGenerator,
+      ownSignal
+    )) {
+      ownSignal.throwIfAborted();
+      if (entryItem.kind === 'directory') {
+        // Create and produce the directory header.
+        yield createTarHeader(
+          'directory',
+          entryItem.path,
+          0,
+          entryItem.mode,
+          entryItem.uname,
+          entryItem.gname,
+          entryItem.uid,
+          entryItem.gid,
+          entryItem.date
+        );
+        continue;
+      }
+      const content = entryItem.content;
+      // Text and byte arrays already have a known byte length.
+      const bytes =
+        typeof content === 'string' || content instanceof Uint8Array
+          ? getBytes(content)
+          : undefined;
+      const streamContent = bytes
+        ? undefined
+        : (content as Exclude<typeof content, string | Uint8Array>);
+      const length = bytes ? bytes.length : streamContent!.length;
+      validateLength(length);
+      const source = streamContent
+        ? iterateSource(
+            streamContent.kind === 'readable'
+              ? streamContent.readable
+              : streamContent.generator,
+            ownSignal
+          )
+        : undefined;
+      try {
+        // Create and produce the file header before reading its contents.
+        yield createTarHeader(
+          'file',
+          entryItem.path,
+          length,
+          entryItem.mode,
+          entryItem.uname,
+          entryItem.gname,
+          entryItem.uid,
+          entryItem.gid,
+          entryItem.date
+        );
+        let position = 0;
+        if (bytes) {
+          if (bytes.length) yield bytes;
+          position = bytes.length;
+        } else {
+          for await (const chunk of source!) {
+            if (!(chunk instanceof Uint8Array))
+              throw new TypeError('Expected Uint8Array file content');
+            position += chunk.length;
+            if (position > length)
+              throw new Error('Content size exceeds declared length');
+            if (chunk.length) yield chunk;
           }
-          break;
         }
-        // Entry is a directory
-        case 'directory': {
-          // Create and produce tar header bytes
-          const tarHeaderBytes = createTarHeader(
-            'directory',
-            entryItem.path,
-            0,
-            entryItem.mode,
-            entryItem.uname,
-            entryItem.gname,
-            entryItem.uid,
-            entryItem.gid,
-            entryItem.date
-          );
-          yield tarHeaderBytes;
-          break;
+        if (position !== length)
+          throw new Error('Content size differs from declared length');
+        // Padding space up to the next 512-byte boundary.
+        if (position % 512) yield new Uint8Array(512 - (position % 512));
+      } finally {
+        await source?.return();
+        // A stream cancelled after the header may not have started iteration yet.
+        if (
+          streamContent?.kind === 'readable' &&
+          !streamContent.readable.locked
+        ) {
+          await streamContent.readable.cancel(ownSignal.reason);
         }
       }
     }
-
-    // Terminates for tar stream
-    yield terminatorBytes;
-  };
-
-  const ct = compressionType ?? 'none';
-
-  switch (ct) {
-    // No compression
-    case 'none': {
-      // Create readable stream from entry item iterator
-      return Readable.from(entryItemIterator(), { signal });
-    }
-    // Gzip compression
-    case 'gzip': {
-      // Create gzip stream
-      const gzipStream = createGzip({ level: 9 });
-      // Create readable stream from entry item iterator
-      const entryItemStream = Readable.from(entryItemIterator(), { signal });
-      // Pipe the entry item stream to the gzip stream
-      entryItemStream.pipe(gzipStream);
-      // Return the gzip stream
-      return gzipStream;
-    }
-  }
+    // Terminate the tar stream with two zero blocks.
+    yield terminatorBytes.slice();
+  }, signal);
+  return compressionType === 'gzip'
+    ? transformGzip(output, 'compress', signal)
+    : output;
 };

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+artifacts/
+coverage/
+test-results/
+playwright-report/
+images/
+docs/
+*.md
+package-lock.json
+LICENSE

@@ -1,0 +1,6 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "types": [], "strict": true, "rootDir": "." },
+  "include": ["main.ts", "browser-checks.ts"],
+  "exclude": []
+}

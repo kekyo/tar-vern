@@ -7,25 +7,46 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { Readable } from 'stream';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { createWriteStream, mkdirSync, readFileSync, writeFileSync, statSync, chmodSync } from 'fs';
+import {
+  createWriteStream,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  statSync,
+  chmodSync,
+} from 'fs';
 import { spawn } from 'child_process';
 import { createGzip } from 'zlib';
 import dayjs from 'dayjs';
-import { createTarPacker } from '../src/packer';
-import { CompressionTypes, EntryItem } from '../src/types';
-import { createReadableFileItem, createReadFileItem, createDirectoryItem, storeReaderToFile } from '../src/utils';
+import { createTarPacker } from '../src/packer.ts';
+import { CompressionTypes, EntryItem } from '../src/types.ts';
+import { createReadableFileItem, createDirectoryItem } from '../src/utils.ts';
+import {
+  createReadDirectoryItem,
+  createReadFileItem,
+  storeReaderToFile,
+} from '../src/node.ts';
 
 describe('Tar packer test', () => {
-  const tempBaseDir = join(tmpdir(), 'tar-vern-test', 'packer', dayjs().format('YYYYMMDD_HHmmssSSS'));
+  const tempBaseDir = join(
+    tmpdir(),
+    'tar-vern-test',
+    'packer',
+    dayjs().format('YYYYMMDD_HHmmssSSS')
+  );
 
   let testDir: string;
 
-  beforeEach(fn => {
+  beforeEach((fn) => {
     testDir = join(tempBaseDir, fn.task.name);
     mkdirSync(testDir, { recursive: true });
   });
 
-  const runCommand = (command: string, args: string[], env: Record<string, string> = {}) => {
+  const runCommand = (
+    command: string,
+    args: string[],
+    env: Record<string, string> = {}
+  ) => {
     const task = spawn(command, args, { env: { ...process.env, ...env } });
     let output = '';
     task.stdout.on('data', (data) => {
@@ -35,40 +56,45 @@ describe('Tar packer test', () => {
       output += data.toString();
     });
     return new Promise<string>((res, rej) => {
-      task.on('close', code => {
+      task.on('close', (code) => {
         if (code === 0) {
           res(output);
         } else {
-          rej(new Error(`${command} process exited with code ${code}: ${output}`));
+          rej(
+            new Error(`${command} process exited with code ${code}: ${output}`)
+          );
         }
       });
     });
-  }
+  };
 
   const extractTar = (tarPath: string, storeToPath: string) => {
     mkdirSync(storeToPath, { recursive: true });
     return runCommand('tar', ['-xvf', tarPath, '-C', storeToPath]);
-  }
+  };
 
   const extractTarGzip = (tarPath: string, storeToPath: string) => {
     mkdirSync(storeToPath, { recursive: true });
     return runCommand('tar', ['-zxvf', tarPath, '-C', storeToPath]);
-  }
+  };
 
-  const storeReaderToGzipFile = (reader: Readable, path: string) => {
+  const storeReaderToGzipFile = (
+    reader: ReadableStream<Uint8Array>,
+    path: string
+  ) => {
     const gzip = createGzip();
     const writer = createWriteStream(path);
-    reader.pipe(gzip).pipe(writer);
+    Readable.fromWeb(reader).pipe(gzip).pipe(writer);
     return new Promise<void>((res, rej) => {
       writer.on('finish', res);
       writer.on('error', rej);
       gzip.on('error', rej);
     });
-  }
+  };
 
   it('should store a string into a tar stream', async () => {
     // Create a generator function that returns an test entry item
-    const generator = async function*() {
+    const generator = async function* () {
       // A 'test.txt' file
       const item: EntryItem = {
         kind: 'file',
@@ -79,8 +105,8 @@ describe('Tar packer test', () => {
         uid: 0,
         gid: 0,
         date: new Date(),
-        content: 'Hello, world!',   // String content
-      }
+        content: 'Hello, world!', // String content
+      };
       yield item;
     };
     const packer = createTarPacker(generator());
@@ -100,7 +126,7 @@ describe('Tar packer test', () => {
   });
 
   it('should create directory entries', async () => {
-    const generator = async function*() {
+    const generator = async function* () {
       const dirItem: EntryItem = {
         kind: 'directory',
         path: 'test-dir',
@@ -110,7 +136,7 @@ describe('Tar packer test', () => {
         uid: 0,
         gid: 0,
         date: new Date(),
-      }
+      };
       yield dirItem;
     };
     const packer = createTarPacker(generator());
@@ -128,7 +154,7 @@ describe('Tar packer test', () => {
   });
 
   it('should store files in directories', async () => {
-    const generator = async function*() {
+    const generator = async function* () {
       // Create directory first
       yield {
         kind: 'directory' as const,
@@ -140,7 +166,7 @@ describe('Tar packer test', () => {
         gid: 1001,
         date: new Date(),
       };
-      
+
       // Then file inside directory
       yield {
         kind: 'file' as const,
@@ -175,11 +201,11 @@ describe('Tar packer test', () => {
   });
 
   it('should handle multiple files', async () => {
-    const generator = async function*() {
+    const generator = async function* () {
       const files = [
         { name: 'file1.txt', content: 'First file content' },
         { name: 'file2.txt', content: 'Second file content' },
-        { name: 'file3.txt', content: 'Third file content' }
+        { name: 'file3.txt', content: 'Third file content' },
       ];
 
       for (const file of files) {
@@ -215,7 +241,7 @@ describe('Tar packer test', () => {
   });
 
   it('should preserve different file modes', async () => {
-    const generator = async function*() {
+    const generator = async function* () {
       // Executable file
       yield {
         kind: 'file' as const,
@@ -260,7 +286,9 @@ describe('Tar packer test', () => {
     await storeReaderToFile(packer, tarPath);
 
     // Use tar -tvf to check modes in the archive with UTC timezone
-    const listOutput = await runCommand('tar', ['-tvf', tarPath], { TZ: 'UTC' });
+    const listOutput = await runCommand('tar', ['-tvf', tarPath], {
+      TZ: 'UTC',
+    });
 
     // Check that modes are preserved in the archive
     expect(listOutput).toMatch(/-rwxr-xr-x.*executable\.sh/);
@@ -273,14 +301,14 @@ describe('Tar packer test', () => {
     const size1MB = 1024 * 1024;
     const randomData1 = Buffer.allocUnsafe(size1MB);
     const randomData2 = Buffer.allocUnsafe(size1MB);
-    
+
     // Fill with different random patterns
     for (let i = 0; i < size1MB; i++) {
       randomData1[i] = Math.floor(Math.random() * 256);
       randomData2[i] = Math.floor(Math.random() * 256);
     }
 
-    const generator = async function*() {
+    const generator = async function* () {
       yield {
         kind: 'file' as const,
         path: 'large1.bin',
@@ -325,8 +353,8 @@ describe('Tar packer test', () => {
 
   it('should preserve metadata (uname/gname/uid/gid/date)', async () => {
     const testDate = new Date('2023-10-15T12:30:45Z');
-    
-    const generator = async function*() {
+
+    const generator = async function* () {
       yield {
         kind: 'file' as const,
         path: 'metadata-test.txt',
@@ -356,7 +384,9 @@ describe('Tar packer test', () => {
     await storeReaderToFile(packer, tarPath);
 
     // Use tar -tvf to check metadata with UTC timezone
-    const listOutput = await runCommand('tar', ['-tvf', tarPath], { TZ: 'UTC' });
+    const listOutput = await runCommand('tar', ['-tvf', tarPath], {
+      TZ: 'UTC',
+    });
 
     // Check that metadata is preserved
     expect(listOutput).toMatch(/alice\/developers.*metadata-test\.txt/);
@@ -369,7 +399,7 @@ describe('Tar packer test', () => {
     const testContent = 'Hello from different sources!';
     const bufferContent = Buffer.from(testContent, 'utf8');
 
-    const generator = async function*() {
+    const generator = async function* () {
       // Buffer content
       yield {
         kind: 'file' as const,
@@ -396,17 +426,17 @@ describe('Tar packer test', () => {
         content: {
           kind: 'generator' as const,
           length: testContent.length,
-          generator: (async function*() {
+          generator: (async function* () {
             // Split content into chunks
             const chunks = [
               Buffer.from('Hello from ', 'utf8'),
               Buffer.from('different ', 'utf8'),
-              Buffer.from('sources!', 'utf8')
+              Buffer.from('sources!', 'utf8'),
             ];
             for (const chunk of chunks) {
               yield chunk;
             }
-          })()
+          })(),
         },
       };
 
@@ -423,7 +453,9 @@ describe('Tar packer test', () => {
         content: {
           kind: 'readable' as const,
           length: testContent.length,
-          readable: Readable.from([testContent])
+          readable: Readable.toWeb(
+            Readable.from([new TextEncoder().encode(testContent)])
+          ),
         },
       };
     };
@@ -436,9 +468,18 @@ describe('Tar packer test', () => {
     await extractTar(tarPath, extractedDir);
 
     // Verify all files have the same content
-    const bufferFileContent = readFileSync(join(extractedDir, 'buffer-file.txt'), 'utf8');
-    const generatorFileContent = readFileSync(join(extractedDir, 'generator-file.txt'), 'utf8');
-    const streamFileContent = readFileSync(join(extractedDir, 'stream-file.txt'), 'utf8');
+    const bufferFileContent = readFileSync(
+      join(extractedDir, 'buffer-file.txt'),
+      'utf8'
+    );
+    const generatorFileContent = readFileSync(
+      join(extractedDir, 'generator-file.txt'),
+      'utf8'
+    );
+    const streamFileContent = readFileSync(
+      join(extractedDir, 'stream-file.txt'),
+      'utf8'
+    );
 
     expect(bufferFileContent).toBe(testContent);
     expect(generatorFileContent).toBe(testContent);
@@ -447,16 +488,18 @@ describe('Tar packer test', () => {
 
   it('should work with createReadableItem helper', async () => {
     const testContent = 'Content from readable item helper!';
-    const stream = Readable.from([testContent]);
-    
-    const generator = async function*() {
+    const stream = Readable.toWeb(
+      Readable.from([new TextEncoder().encode(testContent)])
+    );
+
+    const generator = async function* () {
       const fileItem = await createReadableFileItem('helper-test.txt', stream, {
         mode: 0o644,
         uname: 'helper',
         gname: 'helper',
         uid: 1000,
         gid: 1000,
-        date: new Date('2023-11-01T10:00:00Z')
+        date: new Date('2023-11-01T10:00:00Z'),
       });
       yield fileItem;
     };
@@ -468,7 +511,10 @@ describe('Tar packer test', () => {
     const extractedDir = join(testDir, 'helper-readable-extracted');
     await extractTar(tarPath, extractedDir);
 
-    const extractedContent = readFileSync(join(extractedDir, 'helper-test.txt'), 'utf8');
+    const extractedContent = readFileSync(
+      join(extractedDir, 'helper-test.txt'),
+      'utf8'
+    );
     expect(extractedContent).toBe(testContent);
   });
 
@@ -477,16 +523,21 @@ describe('Tar packer test', () => {
     const testFilePath = join(testDir, 'source-file.txt');
     const testContent = 'Content from file helper!';
     writeFileSync(testFilePath, testContent);
-    
-    const generator = async function*() {
-      const fileItem = await createReadFileItem('archived-file.txt', testFilePath, `exceptName`, {
-        mode: 0o755,
-        uname: 'filehelper',
-        gname: 'filehelper',
-        uid: 2000,
-        gid: 2000,
-        date: new Date('2023-11-02T11:00:00Z')
-      });
+
+    const generator = async function* () {
+      const fileItem = await createReadFileItem(
+        'archived-file.txt',
+        testFilePath,
+        `exceptName`,
+        {
+          mode: 0o755,
+          uname: 'filehelper',
+          gname: 'filehelper',
+          uid: 2000,
+          gid: 2000,
+          date: new Date('2023-11-02T11:00:00Z'),
+        }
+      );
       yield fileItem;
     };
     const packer = createTarPacker(generator());
@@ -498,11 +549,16 @@ describe('Tar packer test', () => {
     await extractTar(tarPath, extractedDir);
 
     // Verify content
-    const extractedContent = readFileSync(join(extractedDir, 'archived-file.txt'), 'utf8');
+    const extractedContent = readFileSync(
+      join(extractedDir, 'archived-file.txt'),
+      'utf8'
+    );
     expect(extractedContent).toBe(testContent);
 
     // Verify metadata
-    const listOutput = await runCommand('tar', ['-tvf', tarPath], { TZ: 'UTC' });
+    const listOutput = await runCommand('tar', ['-tvf', tarPath], {
+      TZ: 'UTC',
+    });
     expect(listOutput).toMatch(/filehelper\/filehelper.*archived-file\.txt/);
     expect(listOutput).toMatch(/-rwxr-xr-x.*archived-file\.txt/);
     expect(listOutput).toMatch(/2023-11-02 11:00.*archived-file\.txt/);
@@ -513,16 +569,19 @@ describe('Tar packer test', () => {
     const testFilePath = join(testDir, 'stat-test-file.txt');
     const testContent = 'Content for stat test!';
     writeFileSync(testFilePath, testContent);
-    
+
     // Set specific permissions (executable)
     chmodSync(testFilePath, 0o755);
-    
+
     // Get the actual stat info to compare against
     const originalStat = statSync(testFilePath);
-    
-    const generator = async function*() {
+
+    const generator = async function* () {
       // Call createReadFileItem without any options - should use stat info
-      const fileItem = await createReadFileItem('stat-reflected-file.txt', testFilePath);
+      const fileItem = await createReadFileItem(
+        'stat-reflected-file.txt',
+        testFilePath
+      );
       yield fileItem;
     };
     const packer = createTarPacker(generator());
@@ -534,41 +593,52 @@ describe('Tar packer test', () => {
     await extractTar(tarPath, extractedDir);
 
     // Verify content
-    const extractedContent = readFileSync(join(extractedDir, 'stat-reflected-file.txt'), 'utf8');
+    const extractedContent = readFileSync(
+      join(extractedDir, 'stat-reflected-file.txt'),
+      'utf8'
+    );
     expect(extractedContent).toBe(testContent);
 
     // Use tar -tvf to check that the stat information was preserved
-    const listOutput = await runCommand('tar', ['-tvf', tarPath], { TZ: 'UTC' });
-    
+    const listOutput = await runCommand('tar', ['-tvf', tarPath], {
+      TZ: 'UTC',
+    });
+
     // Check that the file mode matches the original file permissions
     expect(listOutput).toMatch(/-rwxr-xr-x.*stat-reflected-file\.txt/);
-    
+
     // Check that file size matches
-    expect(listOutput).toMatch(new RegExp(`${originalStat.size}.*stat-reflected-file\\.txt`));
-    
+    expect(listOutput).toMatch(
+      new RegExp(`${originalStat.size}.*stat-reflected-file\\.txt`)
+    );
+
     // Parse the tar output to verify uid/gid (basic verification)
     // The format is typically: permissions links owner/group size date filename
     const lines = listOutput.split('\n');
-    const fileLine = lines.find(line => line.includes('stat-reflected-file.txt'));
+    const fileLine = lines.find((line) =>
+      line.includes('stat-reflected-file.txt')
+    );
     expect(fileLine).toBeDefined();
-    
+
     // Verify that the mtime in the archive is close to original file mtime
     // (within a reasonable tolerance due to filesystem precision differences)
-    const archiveTime = new Date(fileLine!.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)![0] + ':00Z');
+    const archiveTime = new Date(
+      fileLine!.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)![0] + ':00Z'
+    );
     const originalTime = new Date(originalStat.mtime);
     const timeDiff = Math.abs(archiveTime.getTime() - originalTime.getTime());
     expect(timeDiff).toBeLessThan(60000); // Within 1 minute tolerance
   });
 
   it('should work with createDirectoryItem helper with options', async () => {
-    const generator = async function*() {
-      const dirItem = await createDirectoryItem('custom-dir', 'none', {
+    const generator = async function* () {
+      const dirItem = await createDirectoryItem('custom-dir', {
         mode: 0o750,
         uname: 'diruser',
         gname: 'dirgroup',
         uid: 1500,
         gid: 1500,
-        date: new Date('2023-12-01T15:30:00Z')
+        date: new Date('2023-12-01T15:30:00Z'),
       });
       yield dirItem;
     };
@@ -586,7 +656,9 @@ describe('Tar packer test', () => {
     expect(require('fs').statSync(dirPath).isDirectory()).toBe(true);
 
     // Verify metadata using tar -tvf
-    const listOutput = await runCommand('tar', ['-tvf', tarPath], { TZ: 'UTC' });
+    const listOutput = await runCommand('tar', ['-tvf', tarPath], {
+      TZ: 'UTC',
+    });
     expect(listOutput).toMatch(/diruser\/dirgroup.*custom-dir/);
     expect(listOutput).toMatch(/drwxr-x---.*custom-dir/);
     expect(listOutput).toMatch(/2023-12-01 15:30.*custom-dir/);
@@ -596,16 +668,20 @@ describe('Tar packer test', () => {
     // Create a test directory with specific permissions
     const testDirPath = join(testDir, 'stat-test-dir');
     mkdirSync(testDirPath, { recursive: true });
-    
+
     // Set specific permissions
     chmodSync(testDirPath, 0o755);
-    
+
     // Get the actual stat info to compare against
     const originalStat = statSync(testDirPath);
-    
-    const generator = async function*() {
-      // Call createDirectoryItem with filesystem path and default reflectStat ('exceptName') - should use stat info
-      const dirItem = await createDirectoryItem(testDirPath, 'exceptName');
+
+    const generator = async function* () {
+      // Read the directory metadata from its filesystem path.
+      const dirItem = await createReadDirectoryItem(
+        testDirPath,
+        testDirPath,
+        'exceptName'
+      );
       // Override the archive path
       const modifiedDirItem = { ...dirItem, path: 'reflected-dir' };
       yield modifiedDirItem;
@@ -624,18 +700,22 @@ describe('Tar packer test', () => {
     expect(require('fs').statSync(dirPath).isDirectory()).toBe(true);
 
     // Use tar -tvf to check that the stat information was preserved
-    const listOutput = await runCommand('tar', ['-tvf', tarPath], { TZ: 'UTC' });
-    
+    const listOutput = await runCommand('tar', ['-tvf', tarPath], {
+      TZ: 'UTC',
+    });
+
     // Check that the directory mode matches the original directory permissions
     expect(listOutput).toMatch(/drwxr-xr-x.*reflected-dir/);
-    
+
     // Parse the tar output to verify the timestamp
     const lines = listOutput.split('\n');
-    const dirLine = lines.find(line => line.includes('reflected-dir'));
+    const dirLine = lines.find((line) => line.includes('reflected-dir'));
     expect(dirLine).toBeDefined();
-    
+
     // Verify that the mtime in the archive is close to original directory mtime
-    const archiveTime = new Date(dirLine!.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)![0] + ':00Z');
+    const archiveTime = new Date(
+      dirLine!.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)![0] + ':00Z'
+    );
     const originalTime = new Date(originalStat.mtime);
     const timeDiff = Math.abs(archiveTime.getTime() - originalTime.getTime());
     expect(timeDiff).toBeLessThan(60000); // Within 1 minute tolerance
@@ -645,13 +725,13 @@ describe('Tar packer test', () => {
     // Create a test directory with specific permissions
     const testDirPath = join(testDir, 'no-stat-test-dir');
     mkdirSync(testDirPath, { recursive: true });
-    
+
     // Set specific permissions that should NOT be reflected
     chmodSync(testDirPath, 0o700);
-    
-    const generator = async function*() {
-      // Call createDirectoryItem with reflectStat 'none' - should use default values
-      const dirItem = await createDirectoryItem('no-reflected-dir', 'none');
+
+    const generator = async function* () {
+      // Construct a directory without reflecting filesystem metadata.
+      const dirItem = await createDirectoryItem('no-reflected-dir');
       yield dirItem;
     };
     const packer = createTarPacker(generator());
@@ -668,12 +748,14 @@ describe('Tar packer test', () => {
     expect(require('fs').statSync(dirPath).isDirectory()).toBe(true);
 
     // Use tar -tvf to check that default values were used instead of stat
-    const listOutput = await runCommand('tar', ['-tvf', tarPath], { TZ: 'UTC' });
-    
+    const listOutput = await runCommand('tar', ['-tvf', tarPath], {
+      TZ: 'UTC',
+    });
+
     // Check that the directory mode is the default (0o755 = drwxr-xr-x) not the actual file mode (0o700)
     expect(listOutput).toMatch(/drwxr-xr-x.*no-reflected-dir/);
     expect(listOutput).not.toMatch(/drwx------.*no-reflected-dir/);
-    
+
     // Check that default uid/gid are used (should show as root/root or numeric 0/0)
     expect(listOutput).toMatch(/(root\/root|0\/0).*no-reflected-dir/);
   });
@@ -683,14 +765,14 @@ describe('Tar packer test', () => {
     const size1MB = 1024 * 1024;
     const randomData1 = Buffer.allocUnsafe(size1MB);
     const randomData2 = Buffer.allocUnsafe(size1MB);
-    
+
     // Fill with different random patterns
     for (let i = 0; i < size1MB; i++) {
       randomData1[i] = Math.floor(Math.random() * 256);
       randomData2[i] = Math.floor(Math.random() * 256);
     }
 
-    const generator = async function*() {
+    const generator = async function* () {
       yield {
         kind: 'file' as const,
         path: 'large1.bin',
@@ -733,7 +815,6 @@ describe('Tar packer test', () => {
     expect(extracted2.length).toBe(size1MB);
     expect(extracted1.equals(randomData1)).toBe(true);
     expect(extracted2.equals(randomData2)).toBe(true);
-
   });
 
   it('should handle CompressionTypes.gzip for built-in compression', async () => {
@@ -741,14 +822,14 @@ describe('Tar packer test', () => {
     const size1MB = 1024 * 1024;
     const randomData1 = Buffer.allocUnsafe(size1MB);
     const randomData2 = Buffer.allocUnsafe(size1MB);
-    
+
     // Fill with different random patterns
     for (let i = 0; i < size1MB; i++) {
       randomData1[i] = Math.floor(Math.random() * 256);
       randomData2[i] = Math.floor(Math.random() * 256);
     }
 
-    const generator = async function*() {
+    const generator = async function* () {
       yield {
         kind: 'file' as const,
         path: 'compressed1.bin',
@@ -798,7 +879,7 @@ describe('Tar packer test', () => {
 
   describe('Exception handling in generators', () => {
     it('should handle exception in entry item generator', async () => {
-      const generator = async function*() {
+      const generator = async function* () {
         // First item should work
         yield {
           kind: 'file' as const,
@@ -820,11 +901,13 @@ describe('Tar packer test', () => {
       const tarPath = join(testDir, 'exception-test.tar');
 
       // Should reject when trying to store the packer stream
-      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow('Generator exception test');
+      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow(
+        'Generator exception test'
+      );
     });
 
     it('should handle exception in content generator', async () => {
-      const generator = async function*() {
+      const generator = async function* () {
         yield {
           kind: 'file' as const,
           path: 'generator-exception.txt',
@@ -837,10 +920,10 @@ describe('Tar packer test', () => {
           content: {
             kind: 'generator' as const,
             length: 100, // Doesn't matter for this test
-            generator: (async function*() {
+            generator: (async function* () {
               yield Buffer.from('Some content', 'utf8');
               throw new Error('Content generator exception');
-            })()
+            })(),
           },
         };
       };
@@ -849,17 +932,19 @@ describe('Tar packer test', () => {
       const tarPath = join(testDir, 'content-exception-test.tar');
 
       // Should reject when content generator throws
-      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow('Content generator exception');
+      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow(
+        'Content generator exception'
+      );
     });
 
     it('should handle exception in readable stream', async () => {
-      const generator = async function*() {
+      const generator = async function* () {
         // Create a readable stream that will error immediately
-        const errorStream = new Readable({
-          read() {
+        const errorStream = new ReadableStream<Uint8Array>({
+          pull(controller) {
             // Emit error immediately instead of using nextTick
-            this.emit('error', new Error('Readable stream exception'));
-          }
+            controller.error(new Error('Readable stream exception'));
+          },
         });
 
         yield {
@@ -874,7 +959,7 @@ describe('Tar packer test', () => {
           content: {
             kind: 'readable' as const,
             length: 100,
-            readable: errorStream
+            readable: errorStream,
           },
         };
       };
@@ -883,11 +968,13 @@ describe('Tar packer test', () => {
       const tarPath = join(testDir, 'stream-exception-test.tar');
 
       // Should reject when readable stream emits error
-      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow('Readable stream exception');
+      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow(
+        'Readable stream exception'
+      );
     });
 
     it('should handle partial success before exception', async () => {
-      const generator = async function*() {
+      const generator = async function* () {
         // First file should be successfully written
         yield {
           kind: 'file' as const,
@@ -914,10 +1001,10 @@ describe('Tar packer test', () => {
           content: {
             kind: 'generator' as const,
             length: 50,
-            generator: (async function*() {
+            generator: (async function* () {
               yield Buffer.from('Partial content', 'utf8');
               throw new Error('Partial exception');
-            })()
+            })(),
           },
         };
       };
@@ -926,7 +1013,9 @@ describe('Tar packer test', () => {
       const tarPath = join(testDir, 'partial-exception-test.tar');
 
       // Should reject, but may have written partial content
-      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow('Partial exception');
+      await expect(storeReaderToFile(packer, tarPath)).rejects.toThrow(
+        'Partial exception'
+      );
 
       // The tar file may exist but be incomplete/corrupted
       // This is expected behavior - when an exception occurs during streaming,

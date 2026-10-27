@@ -3,15 +3,14 @@
 // Under MIT.
 // https://github.com/kekyo/tar-vern/
 
-import { Readable } from 'stream';
-
 /**
  * Base interface for all entry item contents
  */
 export interface EntryItemContentBase {
+  /** The source kind. */
   readonly kind: 'generator' | 'readable';
   /**
-   * The length of the item
+   * Exact content size in bytes (0 through 8589934591).
    */
   readonly length: number;
 }
@@ -20,28 +19,31 @@ export interface EntryItemContentBase {
  * Interface for all entry item contents that are generators
  */
 export interface EntryItemGeneratorContent extends EntryItemContentBase {
+  /** Identifies an asynchronous byte iterable. */
   readonly kind: 'generator';
   /**
-   * The generator function
+   * The asynchronous byte iterable, consumed once.
    */
-  readonly generator: AsyncGenerator<Buffer, void, unknown>;
+  readonly generator: AsyncIterable<Uint8Array>;
 }
 
 /**
  * Interface for all entry item contents that are readable streams
  */
 export interface EntryItemReadableContent extends EntryItemContentBase {
+  /** Identifies a Web Stream of bytes. */
   readonly kind: 'readable';
   /**
    * The readable stream
    */
-  readonly readable: Readable;
+  readonly readable: ReadableStream<Uint8Array>;
 }
 
 /**
  * Union type for all entry item contents
  */
-export type EntryItemContent = EntryItemGeneratorContent | EntryItemReadableContent;
+export type EntryItemContent =
+  EntryItemGeneratorContent | EntryItemReadableContent;
 
 ///////////////////////////////////////////////////////////////////////////////////
 
@@ -49,6 +51,7 @@ export type EntryItemContent = EntryItemGeneratorContent | EntryItemReadableCont
  * Base interface for all entry items
  */
 export interface EntryItemBase {
+  /** Whether this entry represents a regular file or a directory. */
   readonly kind: 'file' | 'directory';
   /**
    * The path of the item
@@ -86,17 +89,19 @@ export interface EntryItemBase {
  * Interface for all file entry items
  */
 export interface FileItem extends EntryItemBase {
+  /** Identifies a regular file. */
   readonly kind: 'file';
   /**
    * The content of the item
    */
-  readonly content: string | Buffer | EntryItemContent;
+  readonly content: string | Uint8Array | EntryItemContent;
 }
 
 /**
  * Interface for all directory entry items
  */
 export interface DirectoryItem extends EntryItemBase {
+  /** Identifies a directory. */
   readonly kind: 'directory';
 }
 
@@ -111,22 +116,27 @@ export type EntryItem = FileItem | DirectoryItem;
  * Interface for extracted all file entry items
  */
 export interface ExtractedFileItem extends EntryItemBase {
+  /** Identifies a regular file with single-use content. */
   readonly kind: 'file';
   /**
-   * Get the file content as string, buffer, or readable stream
-   * @param type - The type of data to retrieve ('string', 'buffer', or 'readable')
-   * @returns The file content as string, buffer, or readable stream
+   * Get the file content once as text, bytes, or a Web Stream
+   * @remarks Consume or cancel a returned stream before advancing the archive. Text and bytes collect the entire file.
+   * @param type - The type of data to retrieve ('string', 'bytes', or 'readable')
+   * @returns The file content in the requested form
    */
   getContent(type: 'string'): Promise<string>;
-  getContent(type: 'buffer'): Promise<Buffer>;
-  getContent(type: 'readable'): Promise<Readable>;
-  getContent(type: 'string' | 'buffer' | 'readable'): Promise<string | Buffer | Readable>;
+  getContent(type: 'bytes'): Promise<Uint8Array>;
+  getContent(type: 'readable'): Promise<ReadableStream<Uint8Array>>;
+  getContent(
+    type: 'string' | 'bytes' | 'readable'
+  ): Promise<string | Uint8Array | ReadableStream<Uint8Array>>;
 }
 
 /**
  * Interface for extracted all directory entry items
  */
 export interface ExtractedDirectoryItem extends EntryItemBase {
+  /** Identifies a directory. */
   readonly kind: 'directory';
 }
 
@@ -136,14 +146,6 @@ export interface ExtractedDirectoryItem extends EntryItemBase {
 export type ExtractedEntryItem = ExtractedFileItem | ExtractedDirectoryItem;
 
 ///////////////////////////////////////////////////////////////////////////////////
-
-/**
- * The type of stat reflection
- * - all: Reflect all stats
- * - exceptName: Reflect all stats except uname and gname
- * - none: Do not reflect any stats
- */
-export type ReflectStats = 'all' | 'exceptName' | 'none';
 
 /**
  * The type of compression
@@ -181,17 +183,6 @@ export interface CreateItemOptions {
    * The date of the item
    */
   readonly date?: Date;
-}
-
-/**
- * Options for creating a directory item
- */
-export interface CreateDirectoryItemOptions extends CreateItemOptions {
-  /**
-   * The real directory path
-   * @remarks If provided, will get the stats from the directory path
-   */
-  readonly directoryPath?: string;
 }
 
 /**
